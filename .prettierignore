@@ -1,0 +1,7 @@
+.idea/
+node_modules/
+dist/
+coverage/
+MVP.md
+plans/
+package-lock.json

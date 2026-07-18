@@ -42,7 +42,7 @@ STOP conditions, and update its status here.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Bootstrap the monorepo and verification baseline | P0 | M | — | TODO |
+| 001 | Bootstrap the monorepo and verification baseline | P0 | M | — | DONE |
 | 002 | Establish persistence, identity, and user boundaries | P0 | L | 001 | TODO |
 | 003 | Implement task lifecycle, inbox, and append-only history | P0 | L | 002 | TODO |
 | 004 | Implement daily planning, capacity warnings, and carryover | P0 | L | 003 | TODO |
