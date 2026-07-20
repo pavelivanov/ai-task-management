@@ -71,6 +71,21 @@ enum DailyPlanRole {
   optional
 }
 
+enum FocusSessionStatus {
+  active
+  paused
+  waiting
+  blocked
+  completed
+  stopped
+}
+
+enum FocusSegmentType {
+  focused
+  paused
+  waiting
+}
+
 model User {
   id                  String           @id @default(uuid()) @db.Uuid
   email               String           @unique @db.VarChar(320)
@@ -88,6 +103,7 @@ model User {
   tasks               Task[]
   taskEvents          TaskEvent[]
   dailyPlans          DailyPlan[]
+  focusSessions       FocusSession[]
 
   @@index([disabledAt])
   @@map("users")
@@ -185,6 +201,7 @@ model Task {
   subtasks        Task[]          @relation("TaskHierarchy")
   events          TaskEvent[]
   dailyPlanItems  DailyPlanItem[]
+  focusSessions   FocusSession[]
 
   @@index([userId, status, createdAt, id])
   @@index([userId, projectId, status])
@@ -248,4 +265,41 @@ model DailyPlanItem {
   @@index([dailyPlanId, position, id])
   @@index([taskId, dailyPlanId])
   @@map("daily_plan_items")
+}
+
+model FocusSession {
+  id                 String                @id @default(uuid()) @db.Uuid
+  userId             String                @db.Uuid
+  taskId             String                @db.Uuid
+  status             FocusSessionStatus
+  version            Int                   @default(1)
+  startedAt          DateTime              @db.Timestamptz(3)
+  endedAt            DateTime?             @db.Timestamptz(3)
+  initialIntent      String?
+  outcome            String?
+  interruptionReason String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task               Task                  @relation(fields: [taskId], references: [id], onDelete: NoAction)
+  segments           FocusSessionSegment[]
+
+  @@index([userId, status, startedAt, id])
+  @@index([taskId, startedAt, id])
+  @@map("focus_sessions")
+}
+
+model FocusSessionSegment {
+  id             String           @id @default(uuid()) @db.Uuid
+  focusSessionId String           @db.Uuid
+  sequence       Int
+  type           FocusSegmentType
+  startedAt      DateTime         @db.Timestamptz(3)
+  endedAt        DateTime?        @db.Timestamptz(3)
+  createdAt      DateTime         @default(now())
+  focusSession   FocusSession     @relation(fields: [focusSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([focusSessionId, sequence])
+  @@index([focusSessionId, startedAt, id])
+  @@map("focus_session_segments")
 }

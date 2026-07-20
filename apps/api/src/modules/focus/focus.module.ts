@@ -3,31 +3,30 @@ import { Module } from '@nestjs/common';
 import { AppConfigModule } from '../../config/app-config.module';
 import { DatabaseModule } from '../../database/database.module';
 import { AuthModule } from '../auth/auth.module';
+import { DailyPlansModule } from '../daily-plans/daily-plans.module';
 import { InvalidationsModule } from '../invalidations/invalidations.module';
 import { TasksModule } from '../tasks/tasks.module';
-import { DailyPlansController } from './daily-plans.controller';
-import { DailyPlansService } from './daily-plans.service';
 import {
-  DAILY_PLAN_CLOSE_GUARD,
-  ActiveFocusSessionCloseGuard,
-} from './plan-close.guard';
+  FOCUS_ACTIVATION_HOOK,
+  NoopFocusActivationHook,
+} from './focus-activation.hook';
+import { FocusController } from './focus.controller';
+import { FocusService } from './focus.service';
 
 @Module({
   imports: [
     AppConfigModule,
     AuthModule,
+    DailyPlansModule,
     DatabaseModule,
     InvalidationsModule,
     TasksModule,
   ],
-  controllers: [DailyPlansController],
+  controllers: [FocusController],
   providers: [
-    DailyPlansService,
-    {
-      provide: DAILY_PLAN_CLOSE_GUARD,
-      useClass: ActiveFocusSessionCloseGuard,
-    },
+    FocusService,
+    { provide: FOCUS_ACTIVATION_HOOK, useClass: NoopFocusActivationHook },
   ],
-  exports: [DailyPlansService, DAILY_PLAN_CLOSE_GUARD],
+  exports: [FocusService, FOCUS_ACTIVATION_HOOK],
 })
-export class DailyPlansModule {}
+export class FocusModule {}

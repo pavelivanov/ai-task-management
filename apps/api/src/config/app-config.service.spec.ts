@@ -32,6 +32,9 @@ describe('AppConfig', () => {
     expect(config.carryoverWarningCount).toBe(2);
     expect(config.carryoverDiagnosisCount).toBe(3);
     expect(config.carryoverExplicitChoiceCount).toBe(5);
+    expect(config.sseHeartbeatSeconds).toBe(15);
+    expect(config.sseMaxSubscribersPerUser).toBe(5);
+    expect(config.sseMaxSubscribersTotal).toBe(1_000);
   });
 
   it('requires strictly increasing carryover thresholds', () => {

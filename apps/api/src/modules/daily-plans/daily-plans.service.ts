@@ -29,6 +29,7 @@ import type {
   Prisma,
 } from '../../generated/prisma/client';
 import { type Clock, CLOCK } from '../auth/clock';
+import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
 import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
 import {
   databaseDate,
@@ -69,6 +70,7 @@ export class DailyPlansService {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(DAILY_PLAN_CLOSE_GUARD)
     private readonly closeGuard: DailyPlanCloseGuard,
+    private readonly invalidations: InvalidationStreamService,
   ) {}
 
   async getToday(userId: string): Promise<DailyPlan> {
@@ -98,7 +100,7 @@ export class DailyPlansService {
       );
       return plan.id;
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async updateToday(
@@ -145,7 +147,7 @@ export class DailyPlansService {
       if (update.count !== 1) this.throwVersionConflict();
       return plan.id;
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async addTodayItem(
@@ -158,7 +160,7 @@ export class DailyPlansService {
       const plan = await this.findPlan(transaction, userId, date);
       return this.addItem(transaction, userId, plan, date, context, input);
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async scheduleTask(
@@ -189,7 +191,7 @@ export class DailyPlansService {
         ...(input.position !== undefined ? { position: input.position } : {}),
       });
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async updateTodayItem(
@@ -245,7 +247,7 @@ export class DailyPlansService {
       });
       return plan.id;
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async removeTodayItem(
@@ -283,7 +285,7 @@ export class DailyPlansService {
       });
       return plan.id;
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
   }
 
   async closeToday(userId: string, input: CloseDailyPlan): Promise<DailyPlan> {
@@ -365,7 +367,44 @@ export class DailyPlansService {
       if (closed.count !== 1) this.throwVersionConflict();
       return plan.id;
     });
-    return this.present(userId, planId);
+    return this.presentAndPublish(userId, planId);
+  }
+
+  async markTaskCompletedInTransaction(
+    transaction: Transaction,
+    userId: string,
+    taskId: string,
+    completedAt: Date,
+  ): Promise<{ id: string; version: number } | null> {
+    const preferences = await transaction.userPreferences.findUnique({
+      where: { userId },
+      include: { user: { select: { timezone: true } } },
+    });
+    if (!preferences) return null;
+    const date = localDateForInstant(completedAt, preferences.user.timezone);
+    const plan = await transaction.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      include: { items: { where: { taskId } } },
+    });
+    const item = plan?.items[0];
+    if (!plan || plan.status === 'closed' || !item?.id) return null;
+    if (item.completedDuringDay) return null;
+
+    const updated = await transaction.dailyPlan.updateMany({
+      where: {
+        id: plan.id,
+        userId,
+        status: { not: 'closed' },
+        version: plan.version,
+      },
+      data: { version: { increment: 1 } },
+    });
+    if (updated.count !== 1) this.throwVersionConflict();
+    await transaction.dailyPlanItem.update({
+      where: { id: item.id },
+      data: { completedDuringDay: true },
+    });
+    return { id: plan.id, version: plan.version + 1 };
   }
 
   private async addItem(
@@ -447,6 +486,19 @@ export class DailyPlansService {
     ]);
     if (!plan) this.throwNotFound();
     return toDailyPlanContract(plan, context);
+  }
+
+  private async presentAndPublish(
+    userId: string,
+    planId: string,
+  ): Promise<DailyPlan> {
+    const plan = await this.present(userId, planId);
+    this.invalidations.publish(userId, {
+      type: 'plan.changed',
+      resourceId: plan.id,
+      resourceVersion: plan.version,
+    });
+    return plan;
   }
 
   private async getPlanningContext(userId: string): Promise<PlanningContext> {

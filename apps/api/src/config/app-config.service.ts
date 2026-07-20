@@ -24,6 +24,19 @@ const environmentSchema = z
     CARRYOVER_WARNING_COUNT: z.coerce.number().int().min(1).default(2),
     CARRYOVER_DIAGNOSIS_COUNT: z.coerce.number().int().min(2).default(3),
     CARRYOVER_EXPLICIT_CHOICE_COUNT: z.coerce.number().int().min(3).default(5),
+    SSE_HEARTBEAT_SECONDS: z.coerce.number().int().min(1).max(60).default(15),
+    SSE_MAX_SUBSCRIBERS_PER_USER: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(5),
+    SSE_MAX_SUBSCRIBERS_TOTAL: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10_000)
+      .default(1_000),
   })
   .transform((value, context) => {
     const allowedCallbackUrls = value.AUTH_ALLOWED_CALLBACK_URLS.split(',')
@@ -68,6 +81,9 @@ const environmentSchema = z
       carryoverWarningCount: value.CARRYOVER_WARNING_COUNT,
       carryoverDiagnosisCount: value.CARRYOVER_DIAGNOSIS_COUNT,
       carryoverExplicitChoiceCount: value.CARRYOVER_EXPLICIT_CHOICE_COUNT,
+      sseHeartbeatSeconds: value.SSE_HEARTBEAT_SECONDS,
+      sseMaxSubscribersPerUser: value.SSE_MAX_SUBSCRIBERS_PER_USER,
+      sseMaxSubscribersTotal: value.SSE_MAX_SUBSCRIBERS_TOTAL,
     };
   });
 
@@ -89,6 +105,9 @@ export class AppConfig {
   readonly carryoverWarningCount!: number;
   readonly carryoverDiagnosisCount!: number;
   readonly carryoverExplicitChoiceCount!: number;
+  readonly sseHeartbeatSeconds!: number;
+  readonly sseMaxSubscribersPerUser!: number;
+  readonly sseMaxSubscribersTotal!: number;
 
   constructor(
     @Optional()

@@ -3,8 +3,8 @@
 A TypeScript modular monolith for helping people turn intentions into completed
 work. The repository contains the verified application foundation plus the
 user-scoped task lifecycle, timezone-aware daily planning, soft capacity
-warnings, explicit carryover, quick-capture inbox processing, lightweight
-projects, and append-only task history.
+warnings, explicit carryover, segment-based focus tracking, quick-capture inbox
+processing, lightweight projects, and append-only task history.
 
 ## Prerequisites
 
@@ -55,8 +55,14 @@ the inbox capture and processing routes support an oldest-first workflow,
 including scheduling into a daily plan. `/daily-plans/today` supports
 timezone-derived plan creation, edits, ordered items, coded capacity warnings,
 and atomic close with explicit carryover. `/projects` provides the minimal
-project grouping used by task filters. Every mutation requires an allowlisted
-`Origin` header.
+project grouping used by task filters. `/focus` exposes the single-active focus
+lifecycle and reconnect-safe current state; authenticated `GET /events` streams
+content-minimized invalidations with heartbeat comments. Every mutation
+requires an allowlisted `Origin` header.
+
+Event invalidations use bounded in-process subscribers for the MVP's single API
+instance. A multi-replica deployment must introduce shared pub/sub before it can
+rely on cross-instance delivery.
 
 ## Verification
 
