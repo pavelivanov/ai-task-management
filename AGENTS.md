@@ -51,8 +51,13 @@ Run the narrowest relevant workspace command while iterating, then run
 
 ## Completion and Git workflow
 
-- When implementation work is complete and the required verification passes,
-  commit all intended changes to the current branch and push that branch to its
-  configured upstream remote.
-- Do not leave completed work only in the working tree or only in a local
-  commit. Never force-push unless the user explicitly requests it.
+- Treat a successful commit and push as mandatory parts of the definition of
+  done for every completed implementation task.
+- After the required verification passes, audit the diff, stage only the
+  intended files, create a Conventional Commit, and push the current branch.
+  If it has no upstream, set one with `git push --set-upstream origin <branch>`.
+- Do not report the work as complete while intended changes remain only in the
+  working tree, only in the index, or only in a local commit. If the push is
+  blocked, report the blocker instead of claiming completion.
+- Never force-push or open a pull request unless the user explicitly requests
+  it.
