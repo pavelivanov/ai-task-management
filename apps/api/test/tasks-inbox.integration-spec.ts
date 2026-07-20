@@ -348,7 +348,8 @@ describe('task, project, and inbox boundaries', () => {
       .expect(409)
       .expect({
         code: 'TASK_DELETE_CONFLICT',
-        message: 'A task used by subtasks or plan history cannot be deleted.',
+        message:
+          'A task used by subtasks, plan history, or focus history cannot be deleted.',
       });
   });
 

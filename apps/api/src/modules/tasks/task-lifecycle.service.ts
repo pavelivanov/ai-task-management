@@ -21,6 +21,7 @@ export interface TaskTransitionInput {
   expectedVersion?: number;
   reason?: string;
   metadata?: Record<string, SafeMetadataValue>;
+  eventTypeOverride?: TaskEventType;
 }
 
 export interface TaskSchedulingInput {
@@ -58,6 +59,30 @@ export class TaskLifecycleService {
       input.userId,
       input.taskId,
     );
+    const activeFocus = await transaction.focusSession.findFirst({
+      where: {
+        userId: input.userId,
+        taskId: input.taskId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        taskId: true,
+        status: true,
+        version: true,
+        startedAt: true,
+      },
+    });
+    if (activeFocus && input.metadata?.focusSessionId !== activeFocus.id) {
+      throw new ConflictException({
+        code: 'ACTIVE_FOCUS_SESSION_EXISTS',
+        message: 'Use the focus-session command to change the active task.',
+        currentSession: {
+          ...activeFocus,
+          startedAt: activeFocus.startedAt.toISOString(),
+        },
+      });
+    }
     if (
       input.expectedVersion !== undefined &&
       input.expectedVersion !== current.version
@@ -97,7 +122,7 @@ export class TaskLifecycleService {
         userId: input.userId,
         taskId: current.id,
         taskVersion: current.version + 1,
-        type: transition.eventType,
+        type: input.eventTypeOverride ?? transition.eventType,
         metadata,
         createdAt: now,
       },

@@ -11,6 +11,7 @@ interface ErrorBody {
   code: string;
   message: string;
   issues?: string[];
+  currentSession?: unknown;
 }
 
 function normalizeHttpError(exception: HttpException): ErrorBody {
@@ -25,6 +26,9 @@ function normalizeHttpError(exception: HttpException): ErrorBody {
         code: candidate.code,
         message: candidate.message,
         ...(candidate.issues ? { issues: candidate.issues } : {}),
+        ...(candidate.currentSession
+          ? { currentSession: candidate.currentSession }
+          : {}),
       };
     }
   }
