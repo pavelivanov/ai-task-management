@@ -17,41 +17,86 @@ enum AiInterruptionLevel {
   proactive
 }
 
+enum TaskCategory {
+  work
+  personal
+}
+
+enum TaskStatus {
+  inbox
+  backlog
+  planned
+  in_progress
+  waiting
+  blocked
+  completed
+  cancelled
+  archived
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  critical
+}
+
+enum TaskEventType {
+  created
+  updated
+  scheduled
+  unscheduled
+  started
+  paused
+  resumed
+  waiting
+  blocked
+  completed
+  carried_over
+  cancelled
+  archived
+  estimate_changed
+  ai_suggestion_accepted
+}
+
 model User {
-  id                  String          @id @default(uuid()) @db.Uuid
-  email               String          @unique @db.VarChar(320)
-  displayName         String?         @db.VarChar(160)
-  avatarUrl           String?         @db.VarChar(2048)
-  timezone            String          @default("UTC") @db.VarChar(64)
+  id                  String           @id @default(uuid()) @db.Uuid
+  email               String           @unique @db.VarChar(320)
+  displayName         String?          @db.VarChar(160)
+  avatarUrl           String?          @db.VarChar(2048)
+  timezone            String           @default("UTC") @db.VarChar(64)
   disabledAt          DateTime?
   deletionRequestedAt DateTime?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   preferences         UserPreferences?
   identities          AuthIdentity[]
   sessions            AuthSession[]
+  projects            Project[]
+  tasks               Task[]
+  taskEvents          TaskEvent[]
 
   @@index([disabledAt])
   @@map("users")
 }
 
 model UserPreferences {
-  userId                      String              @id @db.Uuid
-  workdayStart                DateTime            @default(dbgenerated("'09:00:00'::time without time zone")) @db.Time(0)
-  workdayEnd                  DateTime            @default(dbgenerated("'17:00:00'::time without time zone")) @db.Time(0)
-  primaryTaskLimit            Int                 @default(1)
-  secondaryTaskLimit          Int                 @default(2)
-  capacityWarningPercent      Int                 @default(10)
-  protectedHoursEnabled       Boolean             @default(false)
-  protectedHoursStart         DateTime?           @db.Time(0)
-  protectedHoursEnd           DateTime?           @db.Time(0)
-  notificationsEnabled        Boolean             @default(false)
-  morningPlanningReminder     Boolean             @default(false)
-  endOfDayReminder            Boolean             @default(false)
-  aiInterruptionLevel         AiInterruptionLevel @default(minimal)
-  createdAt                   DateTime            @default(now())
-  updatedAt                   DateTime            @updatedAt
-  user                        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                  String              @id @db.Uuid
+  workdayStart            DateTime            @default(dbgenerated("'09:00:00'::time without time zone")) @db.Time(0)
+  workdayEnd              DateTime            @default(dbgenerated("'17:00:00'::time without time zone")) @db.Time(0)
+  primaryTaskLimit        Int                 @default(1)
+  secondaryTaskLimit      Int                 @default(2)
+  capacityWarningPercent  Int                 @default(10)
+  protectedHoursEnabled   Boolean             @default(false)
+  protectedHoursStart     DateTime?           @db.Time(0)
+  protectedHoursEnd       DateTime?           @db.Time(0)
+  notificationsEnabled    Boolean             @default(false)
+  morningPlanningReminder Boolean             @default(false)
+  endOfDayReminder        Boolean             @default(false)
+  aiInterruptionLevel     AiInterruptionLevel @default(minimal)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
 }
@@ -85,4 +130,67 @@ model AuthSession {
   @@index([userId, revokedAt, expiresAt])
   @@index([expiresAt])
   @@map("auth_sessions")
+}
+
+model Project {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  name           String    @db.VarChar(120)
+  normalizedName String    @db.VarChar(120)
+  color          String?   @db.VarChar(7)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@unique([userId, normalizedName])
+  @@index([userId, archivedAt, createdAt, id])
+  @@map("projects")
+}
+
+model Task {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  title           String       @db.VarChar(240)
+  description     String?
+  category        TaskCategory
+  status          TaskStatus
+  priority        TaskPriority @default(normal)
+  estimateMinutes Int?
+  dueAt           DateTime?
+  projectId       String?      @db.Uuid
+  parentTaskId    String?      @db.Uuid
+  carryoverCount  Int          @default(0)
+  version         Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  completedAt     DateTime?
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentTask      Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: NoAction)
+  subtasks        Task[]       @relation("TaskHierarchy")
+  events          TaskEvent[]
+
+  @@index([userId, status, createdAt, id])
+  @@index([userId, projectId, status])
+  @@index([parentTaskId])
+  @@map("tasks")
+}
+
+model TaskEvent {
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @db.Uuid
+  taskId      String        @db.Uuid
+  taskVersion Int
+  type        TaskEventType
+  metadata    Json
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, taskVersion])
+  @@index([taskId, createdAt, id])
+  @@index([userId, createdAt, id])
+  @@map("task_events")
 }

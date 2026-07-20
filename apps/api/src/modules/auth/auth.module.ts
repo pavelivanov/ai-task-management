@@ -27,6 +27,7 @@ import { SessionCleanupScheduler } from './session-cleanup.scheduler';
   exports: [
     AuthCookieService,
     AuthService,
+    CLOCK,
     CsrfOriginGuard,
     SessionAuthGuard,
     SessionCleanupScheduler,
