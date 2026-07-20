@@ -1,9 +1,9 @@
 # AI Execution Assistant
 
 A TypeScript modular monolith for helping people turn intentions into completed
-work. The repository currently contains the verified application foundation:
-a React/Vite client, a NestJS API, shared domain and transport packages, and a
-local PostgreSQL service.
+work. The repository contains the verified application foundation plus the
+user-scoped task lifecycle: backlog tasks, quick-capture inbox processing,
+lightweight projects, and append-only task history.
 
 ## Prerequisites
 
@@ -47,6 +47,12 @@ The API listens on `http://localhost:3000`; its stable health endpoint is
 `GET /health`. Google login starts at `GET /auth/google`; authenticated clients
 can use `GET /auth/me` and `GET/PATCH /users/me/preferences`. The web app listens
 on `http://localhost:5173`.
+
+Authenticated task workflows are available through `GET/POST /tasks`, task
+detail, patch, delete, archive, complete, and history routes. `GET /inbox` plus
+the inbox capture and processing routes support an oldest-first workflow, and
+`/projects` provides the minimal project grouping used by task filters. Every
+mutation requires an allowlisted `Origin` header.
 
 ## Verification
 
