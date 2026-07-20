@@ -19,6 +19,8 @@ Use Node.js `24.18.0` and npm `11.9.0`.
 
 ```bash
 npm ci
+npm run db:validate
+npm run db:migrate:test
 npm run format:check
 npm run lint
 npm run typecheck
@@ -32,6 +34,10 @@ npm run verify
 Run the narrowest relevant workspace command while iterating, then run
 `npm run verify` before handing off a completed change.
 
+`npm run db:migrate:test` is destructive only to the database named by
+`TEST_DATABASE_URL`; the safety script requires a localhost database ending in
+`_test`. Never point integration tests at development or production data.
+
 ## Naming and tests
 
 - Use lower-case, hyphenated feature directories and descriptive file names.
@@ -39,4 +45,6 @@ Run the narrowest relevant workspace command while iterating, then run
   live in `apps/api/test` as `*.integration-spec.ts`.
 - Add deterministic tests for every domain rule. Unit tests must not require a
   database or network.
+- Every user-owned repository or service method must require `userId` from the
+  authenticated request context; never accept ownership authority from a body.
 - Use Conventional Commits for commit messages.

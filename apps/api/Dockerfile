@@ -6,10 +6,13 @@ COPY apps/api/package.json apps/api/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/domain/package.json packages/domain/package.json
+COPY tsconfig.base.json ./
+COPY prisma.config.ts ./
+COPY prisma prisma
+COPY packages/config packages/config
+COPY packages/contracts packages/contracts
 RUN npm ci
 
-COPY tsconfig.base.json ./
-COPY packages/config packages/config
 COPY apps/api apps/api
 RUN npm run build --workspace apps/api
 

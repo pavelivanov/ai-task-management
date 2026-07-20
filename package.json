@@ -16,13 +16,17 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "compose:validate": "docker compose config --quiet",
+    "db:generate": "prisma generate",
+    "db:migrate:test": "tsx scripts/migrate-test-database.ts",
+    "db:validate": "prisma validate",
     "db:down": "docker compose down",
     "db:up": "docker compose up -d postgres",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:integration": "npm run test:integration --workspaces --if-present",
+    "postinstall": "prisma generate && npm run build --workspace packages/contracts",
+    "test:integration": "npm run db:migrate:test && npm run test:integration --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build && npm run compose:validate"
   },
@@ -33,8 +37,16 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "@types/pg": "^8.15.6",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3",
     "prettier": "^3.8.1",
+    "prisma": "7.6.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.13"
   }
 }

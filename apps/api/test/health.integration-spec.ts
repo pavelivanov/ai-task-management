@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module';
+import { configureApplication } from '../src/application';
 
 describe('GET /health', () => {
   let app: INestApplication;
@@ -13,6 +14,7 @@ describe('GET /health', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    configureApplication(app);
     await app.init();
   });
 

@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../apps/api/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  google
+}
+
+enum AiInterruptionLevel {
+  minimal
+  balanced
+  proactive
+}
+
+model User {
+  id                  String          @id @default(uuid()) @db.Uuid
+  email               String          @unique @db.VarChar(320)
+  displayName         String?         @db.VarChar(160)
+  avatarUrl           String?         @db.VarChar(2048)
+  timezone            String          @default("UTC") @db.VarChar(64)
+  disabledAt          DateTime?
+  deletionRequestedAt DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  preferences         UserPreferences?
+  identities          AuthIdentity[]
+  sessions            AuthSession[]
+
+  @@index([disabledAt])
+  @@map("users")
+}
+
+model UserPreferences {
+  userId                      String              @id @db.Uuid
+  workdayStart                DateTime            @default(dbgenerated("'09:00:00'::time without time zone")) @db.Time(0)
+  workdayEnd                  DateTime            @default(dbgenerated("'17:00:00'::time without time zone")) @db.Time(0)
+  primaryTaskLimit            Int                 @default(1)
+  secondaryTaskLimit          Int                 @default(2)
+  capacityWarningPercent      Int                 @default(10)
+  protectedHoursEnabled       Boolean             @default(false)
+  protectedHoursStart         DateTime?           @db.Time(0)
+  protectedHoursEnd           DateTime?           @db.Time(0)
+  notificationsEnabled        Boolean             @default(false)
+  morningPlanningReminder     Boolean             @default(false)
+  endOfDayReminder            Boolean             @default(false)
+  aiInterruptionLevel         AiInterruptionLevel @default(minimal)
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+  user                        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model AuthIdentity {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  provider        AuthProvider
+  providerSubject String       @db.VarChar(255)
+  emailAtLink     String       @db.VarChar(320)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+model AuthSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique @db.Char(64)
+  expiresAt  DateTime
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  userAgent  String?   @db.VarChar(512)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}

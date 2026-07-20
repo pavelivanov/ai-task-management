@@ -13,6 +13,29 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: execution_assistant
+          POSTGRES_USER: execution_assistant
+          POSTGRES_PASSWORD: local-development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U execution_assistant -d execution_assistant"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://execution_assistant:local-development-only@localhost:5432/execution_assistant
+      TEST_DATABASE_URL: postgresql://execution_assistant:local-development-only@localhost:5432/execution_assistant_test
+      GOOGLE_CLIENT_ID: test-google-client-id
+      GOOGLE_CLIENT_SECRET: test-google-client-secret
+      GOOGLE_CALLBACK_URL: http://localhost:3000/auth/google/callback
+      AUTH_ALLOWED_CALLBACK_URLS: http://localhost:3000/auth/google/callback
+      WEB_APP_URL: http://localhost:5173
+      WEB_ORIGINS: http://localhost:5173
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

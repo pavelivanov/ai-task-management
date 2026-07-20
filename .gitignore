@@ -5,6 +5,7 @@
 node_modules/
 dist/
 coverage/
+apps/api/src/generated/prisma/
 *.tsbuildinfo
 *.log
 .DS_Store
