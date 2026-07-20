@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
 import {
+  dailyPlanRoleSchema,
+  dailyPlanSchema,
+  localDateSchema,
+} from '../daily-plans/index.js';
+import {
   taskSchema,
   taskCategorySchema,
   taskDescriptionSchema,
@@ -39,10 +44,27 @@ export const processInboxTaskSchema = z.discriminatedUnion('action', [
     .object({ action: z.literal('cancel'), reason: actionReasonSchema })
     .strict(),
   z.object({ action: z.literal('delete') }).strict(),
+  z
+    .object({
+      action: z.literal('schedule'),
+      planDate: localDateSchema.optional(),
+      role: dailyPlanRoleSchema.default('optional'),
+      plannedStart: z.iso.datetime({ offset: true }).nullable().optional(),
+      plannedDurationMinutes: z
+        .number()
+        .int()
+        .min(1)
+        .max(10_080)
+        .nullable()
+        .optional(),
+      position: z.number().int().min(0).max(1_000).optional(),
+    })
+    .strict(),
 ]);
 
 export const processInboxResultSchema = z.union([
   z.object({ deleted: z.literal(true) }),
+  dailyPlanSchema,
   taskSchema,
 ]);
 

@@ -2,8 +2,9 @@
 
 A TypeScript modular monolith for helping people turn intentions into completed
 work. The repository contains the verified application foundation plus the
-user-scoped task lifecycle: backlog tasks, quick-capture inbox processing,
-lightweight projects, and append-only task history.
+user-scoped task lifecycle, timezone-aware daily planning, soft capacity
+warnings, explicit carryover, quick-capture inbox processing, lightweight
+projects, and append-only task history.
 
 ## Prerequisites
 
@@ -50,9 +51,12 @@ on `http://localhost:5173`.
 
 Authenticated task workflows are available through `GET/POST /tasks`, task
 detail, patch, delete, archive, complete, and history routes. `GET /inbox` plus
-the inbox capture and processing routes support an oldest-first workflow, and
-`/projects` provides the minimal project grouping used by task filters. Every
-mutation requires an allowlisted `Origin` header.
+the inbox capture and processing routes support an oldest-first workflow,
+including scheduling into a daily plan. `/daily-plans/today` supports
+timezone-derived plan creation, edits, ordered items, coded capacity warnings,
+and atomic close with explicit carryover. `/projects` provides the minimal
+project grouping used by task filters. Every mutation requires an allowlisted
+`Origin` header.
 
 ## Verification
 

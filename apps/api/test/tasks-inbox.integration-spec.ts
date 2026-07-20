@@ -348,7 +348,7 @@ describe('task, project, and inbox boundaries', () => {
       .expect(409)
       .expect({
         code: 'TASK_DELETE_CONFLICT',
-        message: 'A task with subtasks cannot be deleted.',
+        message: 'A task used by subtasks or plan history cannot be deleted.',
       });
   });
 
@@ -520,7 +520,7 @@ describe('task, project, and inbox boundaries', () => {
       .post(`/inbox/${archived.id}/process`)
       .set('Cookie', userA.cookie)
       .set('Origin', origin)
-      .send({ action: 'schedule' })
+      .send({ action: 'decompose' })
       .expect(400);
     await request(app.getHttpServer())
       .post(`/inbox/${archived.id}/process`)

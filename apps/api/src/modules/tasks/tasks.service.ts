@@ -258,7 +258,7 @@ export class TasksService {
       ) {
         throw new ConflictException({
           code: 'TASK_DELETE_CONFLICT',
-          message: 'A task with subtasks cannot be deleted.',
+          message: 'A task used by subtasks or plan history cannot be deleted.',
         });
       }
       throw error;
