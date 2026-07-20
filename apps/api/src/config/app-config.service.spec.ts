@@ -35,6 +35,7 @@ describe('AppConfig', () => {
     expect(config.sseHeartbeatSeconds).toBe(15);
     expect(config.sseMaxSubscribersPerUser).toBe(5);
     expect(config.sseMaxSubscribersTotal).toBe(1_000);
+    expect(config.e2eAuthEnabled).toBe(false);
   });
 
   it('requires strictly increasing carryover thresholds', () => {
@@ -45,6 +46,17 @@ describe('AppConfig', () => {
           CARRYOVER_WARNING_COUNT: '3',
           CARRYOVER_DIAGNOSIS_COUNT: '3',
           CARRYOVER_EXPLICIT_CHOICE_COUNT: '5',
+        }),
+    ).toThrow();
+  });
+
+  it('rejects deterministic test authentication in production', () => {
+    expect(
+      () =>
+        new AppConfig({
+          ...validEnvironment,
+          NODE_ENV: 'production',
+          E2E_AUTH_ENABLED: 'true',
         }),
     ).toThrow();
   });

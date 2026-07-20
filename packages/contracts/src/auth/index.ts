@@ -19,6 +19,14 @@ export const apiErrorSchema = z.object({
   issues: z.array(z.string()).optional(),
 });
 
+export const e2eLoginSchema = z
+  .object({
+    email: z.email(),
+    displayName: z.string().trim().min(1).max(160).default('E2E Pilot'),
+  })
+  .strict();
+
 export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
 export type OAuthCallbackQuery = z.infer<typeof oauthCallbackQuerySchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
+export type E2eLogin = z.output<typeof e2eLoginSchema>;

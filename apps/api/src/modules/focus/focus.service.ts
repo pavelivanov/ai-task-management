@@ -63,7 +63,11 @@ export class FocusService {
 
   async current(userId: string): Promise<CurrentFocusSession> {
     const session = await this.prisma.focusSession.findFirst({
-      where: { userId, status: 'active' },
+      where: {
+        userId,
+        status: { in: ['active', 'paused', 'waiting', 'blocked'] },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
       include: {
         segments: { orderBy: { sequence: 'asc' } },
         task: true,
@@ -76,7 +80,7 @@ export class FocusService {
     let result: FocusMutationResult;
     try {
       result = await this.prisma.$transaction(async (transaction) => {
-        const current = await this.findActiveSummary(transaction, userId);
+        const current = await this.findOpenSummary(transaction, userId);
         if (current) {
           if (current.taskId === input.taskId) {
             return { id: current.id, changed: false, planChanged: null };
@@ -133,7 +137,7 @@ export class FocusService {
       });
     } catch (error) {
       if (!this.isUniqueViolation(error)) throw error;
-      const current = await this.findActiveSummary(this.prisma, userId);
+      const current = await this.findOpenSummary(this.prisma, userId);
       if (current?.taskId === input.taskId) {
         result = { id: current.id, changed: false, planChanged: null };
       } else if (current) {
@@ -376,6 +380,26 @@ export class FocusService {
   ) {
     return database.focusSession.findFirst({
       where: { userId, status: 'active' },
+      select: {
+        id: true,
+        taskId: true,
+        status: true,
+        version: true,
+        startedAt: true,
+      },
+    });
+  }
+
+  private findOpenSummary(
+    database: Transaction | PrismaService,
+    userId: string,
+  ) {
+    return database.focusSession.findFirst({
+      where: {
+        userId,
+        status: { in: ['active', 'paused', 'waiting', 'blocked'] },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         taskId: true,

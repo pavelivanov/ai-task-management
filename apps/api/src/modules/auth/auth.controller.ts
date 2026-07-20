@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -10,6 +11,8 @@ import {
 } from '@nestjs/common';
 import {
   type AuthenticatedUser,
+  type E2eLogin,
+  e2eLoginSchema,
   type OAuthCallbackQuery,
   oauthCallbackQuerySchema,
 } from '@execution/contracts';
@@ -71,6 +74,24 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   getCurrentUser(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  @Post('e2e/login')
+  @UseGuards(CsrfOriginGuard)
+  async e2eLogin(
+    @Body(new ZodValidationPipe(e2eLoginSchema)) input: E2eLogin,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthenticatedUser> {
+    const result = await this.authService.createE2eSession(input, {
+      userAgent: request.headers['user-agent'] ?? null,
+    });
+    this.cookies.setSessionCookie(
+      response,
+      result.sessionToken,
+      result.expiresAt,
+    );
+    return result.user;
   }
 
   @Post('logout')

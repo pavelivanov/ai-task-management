@@ -1,10 +1,12 @@
 # AI Execution Assistant
 
 A TypeScript modular monolith for helping people turn intentions into completed
-work. The repository contains the verified application foundation plus the
-user-scoped task lifecycle, timezone-aware daily planning, soft capacity
-warnings, explicit carryover, segment-based focus tracking, quick-capture inbox
-processing, lightweight projects, and append-only task history.
+work. The repository contains the verified deterministic execution loop:
+user-scoped task and inbox workflows, timezone-aware daily planning, soft
+capacity warnings, explicit carryover, segment-based focus tracking,
+deterministic daily reviews, lightweight projects, and append-only task
+history. A responsive React workspace exposes Today, Focus, Inbox, Backlog,
+Review, and Settings without requiring an LLM key.
 
 ## Prerequisites
 
@@ -64,6 +66,11 @@ Event invalidations use bounded in-process subscribers for the MVP's single API
 instance. A multi-replica deployment must introduce shared pub/sub before it can
 rely on cross-instance delivery.
 
+Daily reviews are generated from authoritative plan items, task events, and
+focus segments when a day closes or through the explicit review-generation
+endpoint. Regeneration preserves the user's reflection and never assigns a
+productivity score.
+
 ## Verification
 
 Run the complete non-browser gate with:
@@ -74,8 +81,18 @@ npm run verify
 
 Individual gates are available as `npm run format:check`, `npm run lint`,
 `npm run typecheck`, `npm test`, `npm run test:integration`, and
-`npm run build`. Integration tests recreate the isolated test database. Validate
-the local service definition with `npm run compose:validate`.
+`npm run build`. The isolated Playwright journey, responsive smoke checks, and
+automated accessibility gate run with:
+
+```bash
+npm run test:e2e:install
+npm run test:e2e
+```
+
+Integration and browser tests recreate the isolated test database. The API's
+deterministic test-login endpoint is disabled by default and is rejected in
+production; the Playwright configuration enables it only for its isolated test
+servers. Validate the local service definition with `npm run compose:validate`.
 
 Stop the local database without deleting its named volume:
 

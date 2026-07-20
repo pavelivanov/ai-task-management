@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import {
   type AuthenticatedUser,
   type CompleteFocusSession,
@@ -13,6 +21,7 @@ import {
   type StopFocusSession,
   stopFocusSessionSchema,
 } from '@execution/contracts';
+import type { Response } from 'express';
 
 import { ZodValidationPipe } from '../../common/http/zod-validation.pipe';
 import { CsrfOriginGuard } from '../auth/csrf-origin.guard';
@@ -26,10 +35,12 @@ export class FocusController {
   constructor(private readonly focus: FocusService) {}
 
   @Get('current')
-  current(
+  async current(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<CurrentFocusSession> {
-    return this.focus.current(user.id);
+    @Res() response: Response,
+  ): Promise<void> {
+    const current: CurrentFocusSession = await this.focus.current(user.id);
+    response.status(200).json(current);
   }
 
   @Post('start')
