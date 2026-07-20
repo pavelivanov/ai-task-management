@@ -8,6 +8,7 @@ import { HealthModule } from './modules/health/health.module';
 import { InboxModule } from './modules/inbox/inbox.module';
 import { InvalidationsModule } from './modules/invalidations/invalidations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -21,6 +22,7 @@ import { UsersModule } from './modules/users/users.module';
     InboxModule,
     InvalidationsModule,
     ProjectsModule,
+    ReviewsModule,
     TasksModule,
     UsersModule,
   ],

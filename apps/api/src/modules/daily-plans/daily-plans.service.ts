@@ -30,6 +30,7 @@ import type {
 } from '../../generated/prisma/client';
 import { type Clock, CLOCK } from '../auth/clock';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
 import {
   databaseDate,
@@ -71,6 +72,7 @@ export class DailyPlansService {
     @Inject(DAILY_PLAN_CLOSE_GUARD)
     private readonly closeGuard: DailyPlanCloseGuard,
     private readonly invalidations: InvalidationStreamService,
+    private readonly reviews: ReviewsService,
   ) {}
 
   async getToday(userId: string): Promise<DailyPlan> {
@@ -297,7 +299,10 @@ export class DailyPlansService {
         userId,
         date,
       );
-      if (plan.status === 'closed') return plan.id;
+      if (plan.status === 'closed') {
+        await this.reviews.generateInTransaction(transaction, userId, date);
+        return plan.id;
+      }
       if (
         input.expectedPlanVersion !== undefined &&
         input.expectedPlanVersion !== plan.version
@@ -365,6 +370,7 @@ export class DailyPlansService {
         },
       });
       if (closed.count !== 1) this.throwVersionConflict();
+      await this.reviews.generateInTransaction(transaction, userId, date);
       return plan.id;
     });
     return this.presentAndPublish(userId, planId);

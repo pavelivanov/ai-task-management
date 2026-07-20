@@ -5,6 +5,7 @@ export * from './daily-plans/index.js';
 export * from './focus/index.js';
 export * from './inbox/index.js';
 export * from './projects/index.js';
+export * from './reviews/index.js';
 export * from './tasks/index.js';
 export * from './users/index.js';
 
