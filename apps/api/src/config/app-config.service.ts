@@ -16,6 +16,7 @@ const environmentSchema = z
     AUTH_ALLOWED_CALLBACK_URLS: z.string().min(1),
     WEB_APP_URL: z.url(),
     WEB_ORIGINS: z.string().min(1),
+    E2E_AUTH_ENABLED: z.enum(['true', 'false']).default('false'),
     SESSION_COOKIE_NAME: z
       .string()
       .regex(/^[a-zA-Z0-9_-]+$/)
@@ -65,6 +66,14 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
+    if (value.NODE_ENV === 'production' && value.E2E_AUTH_ENABLED === 'true') {
+      context.addIssue({
+        code: 'custom',
+        message: 'E2E_AUTH_ENABLED cannot be true in production.',
+        path: ['E2E_AUTH_ENABLED'],
+      });
+      return z.NEVER;
+    }
 
     return {
       nodeEnvironment: value.NODE_ENV,
@@ -76,6 +85,7 @@ const environmentSchema = z
       allowedCallbackUrls,
       webAppUrl: value.WEB_APP_URL,
       webOrigins,
+      e2eAuthEnabled: value.E2E_AUTH_ENABLED === 'true',
       sessionCookieName: value.SESSION_COOKIE_NAME,
       sessionTtlDays: value.SESSION_TTL_DAYS,
       carryoverWarningCount: value.CARRYOVER_WARNING_COUNT,
@@ -100,6 +110,7 @@ export class AppConfig {
   readonly allowedCallbackUrls!: string[];
   readonly webAppUrl!: string;
   readonly webOrigins!: string[];
+  readonly e2eAuthEnabled!: boolean;
   readonly sessionCookieName!: string;
   readonly sessionTtlDays!: number;
   readonly carryoverWarningCount!: number;

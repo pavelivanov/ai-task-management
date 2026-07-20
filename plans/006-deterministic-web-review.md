@@ -197,14 +197,14 @@ responsive smoke coverage at phone/tablet/desktop widths.
 
 ## Done criteria
 
-- [ ] A user can complete the full deterministic loop without an LLM key.
-- [ ] Five primary screens exist with intentional information boundaries.
-- [ ] TanStack Query owns server state; Zustand contains no canonical task data.
-- [ ] Timer survives refresh/reconnect without per-second server writes.
-- [ ] Daily review is deterministic, idempotent, and contains no productivity score.
-- [ ] E2E passes twice consecutively and core accessibility gate passes.
-- [ ] `npm run verify && npm run test:e2e` exit 0.
-- [ ] `plans/README.md` status row is updated.
+- [x] A user can complete the full deterministic loop without an LLM key.
+- [x] Five primary screens exist with intentional information boundaries.
+- [x] TanStack Query owns server state; Zustand contains no canonical task data.
+- [x] Timer survives refresh/reconnect without per-second server writes.
+- [x] Daily review is deterministic, idempotent, and contains no productivity score.
+- [x] E2E passes twice consecutively and core accessibility gate passes.
+- [x] `npm run verify && npm run test:e2e` exit 0.
+- [x] `plans/README.md` status row is updated.
 
 ## STOP conditions
 

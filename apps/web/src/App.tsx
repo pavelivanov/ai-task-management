@@ -1,48 +1,28 @@
-import { useEffect, useState } from 'react';
+import { Navigate, Route, Routes } from 'react-router';
 
-type ApiStatus = 'checking' | 'reachable' | 'unavailable';
-
-const statusLabels: Record<ApiStatus, string> = {
-  checking: 'Checking API…',
-  reachable: 'API reachable',
-  unavailable: 'API unavailable',
-};
+import { LoginPage } from './features/auth/LoginPage';
+import { AuthenticatedLayout } from './routes/AuthenticatedLayout';
+import { BacklogPage } from './routes/BacklogPage';
+import { FocusPage } from './routes/FocusPage';
+import { InboxPage } from './routes/InboxPage';
+import { ReviewPage } from './routes/ReviewPage';
+import { SettingsPage } from './routes/SettingsPage';
+import { TodayPage } from './routes/TodayPage';
 
 export function App() {
-  const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const apiBaseUrl =
-      import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
-
-    void fetch(`${apiBaseUrl}/health`, { signal: controller.signal })
-      .then((response) => {
-        setApiStatus(response.ok ? 'reachable' : 'unavailable');
-      })
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setApiStatus('unavailable');
-        }
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
   return (
-    <main className="shell">
-      <p className="eyebrow">Deterministic work, one day at a time</p>
-      <h1>AI Execution Assistant</h1>
-      <p className="intro">
-        The application foundation is ready for capture, planning, focus, and
-        review workflows.
-      </p>
-      <p className={`api-status api-status--${apiStatus}`} role="status">
-        <span aria-hidden="true" className="status-dot" />
-        {statusLabels[apiStatus]}
-      </p>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<LoginPage callback />} />
+      <Route element={<AuthenticatedLayout />}>
+        <Route path="/today" element={<TodayPage />} />
+        <Route path="/focus" element={<FocusPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/backlog" element={<BacklogPage />} />
+        <Route path="/review" element={<ReviewPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate replace to="/today" />} />
+    </Routes>
   );
 }

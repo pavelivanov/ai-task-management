@@ -393,6 +393,30 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
       version: 2,
       task: { status: 'backlog' },
     });
+    await request(app.getHttpServer())
+      .get('/focus/current')
+      .set('Cookie', user.cookie)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          id: focus.id,
+          status: 'paused',
+          focusedDurationSeconds: 120,
+        });
+      });
+    const competingTask = await createTask(user, 'Competing task');
+    await request(app.getHttpServer())
+      .post('/focus/start')
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({ taskId: competingTask.id })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'ACTIVE_FOCUS_SESSION_EXISTS',
+          currentSession: { id: focus.id, status: 'paused' },
+        });
+      });
     const pausedRetry = await focusCommand(user, focus.id, 'pause', {
       reason: 'Ignored retry',
     });

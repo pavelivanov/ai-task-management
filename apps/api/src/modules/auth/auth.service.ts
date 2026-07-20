@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '@execution/contracts';
+import type { E2eLogin } from '@execution/contracts';
 import { createHash, randomBytes } from 'node:crypto';
 
 import { PrismaService } from '../../database/prisma.service';
@@ -75,6 +76,30 @@ export class AuthService {
       profile,
       input.currentSessionToken,
       input.metadata,
+    );
+  }
+
+  createE2eSession(
+    input: E2eLogin,
+    metadata: SessionMetadata,
+  ): Promise<LoginResult> {
+    if (!this.config.e2eAuthEnabled) {
+      throw new UnauthorizedException({
+        code: 'E2E_AUTH_DISABLED',
+        message: 'Deterministic test authentication is disabled.',
+      });
+    }
+    const email = input.email.trim().toLowerCase();
+    return this.createSessionForIdentity(
+      {
+        subject: `e2e:${email}`,
+        email,
+        emailVerified: true,
+        displayName: input.displayName,
+        avatarUrl: null,
+      },
+      null,
+      metadata,
     );
   }
 
