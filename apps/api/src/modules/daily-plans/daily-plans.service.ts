@@ -1,0 +1,605 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type {
+  AddDailyPlanItem,
+  CarryoverSignal,
+  CloseDailyPlan,
+  CreateTodayPlan,
+  DailyPlan,
+  DailyPlanRole,
+  UpdateDailyPlanItem,
+  UpdateTodayPlan,
+} from '@execution/contracts';
+import {
+  availableWorkMinutes,
+  carryoverSignalForCount,
+  localDateForInstant,
+  validateLocalDate,
+} from '@execution/domain';
+
+import { AppConfig } from '../../config/app-config.service';
+import { PrismaService } from '../../database/prisma.service';
+import type {
+  DailyPlan as StoredDailyPlan,
+  Prisma,
+} from '../../generated/prisma/client';
+import { type Clock, CLOCK } from '../auth/clock';
+import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
+import {
+  databaseDate,
+  formatLocalTime,
+  parseLocalTime,
+  toDailyPlanContract,
+} from './daily-plan-presenter';
+import {
+  type DailyPlanCloseGuard,
+  DAILY_PLAN_CLOSE_GUARD,
+} from './plan-close.guard';
+
+interface PlanningContext {
+  timezone: string;
+  workdayStart: Date;
+  workdayEnd: Date;
+  primaryLimit: number;
+  secondaryLimit: number;
+  overCapacityPercent: number;
+}
+
+export interface ScheduleTaskInput {
+  planDate?: string;
+  role: DailyPlanRole;
+  plannedStart?: string | null;
+  plannedDurationMinutes?: number | null;
+  position?: number;
+}
+
+type Transaction = Prisma.TransactionClient;
+
+@Injectable()
+export class DailyPlansService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lifecycle: TaskLifecycleService,
+    private readonly config: AppConfig,
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(DAILY_PLAN_CLOSE_GUARD)
+    private readonly closeGuard: DailyPlanCloseGuard,
+  ) {}
+
+  async getToday(userId: string): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const plan = await this.prisma.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      select: { id: true },
+    });
+    if (!plan) this.throwNotFound();
+    return this.present(userId, plan.id);
+  }
+
+  async createToday(
+    userId: string,
+    input: CreateTodayPlan,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.ensurePlan(
+        transaction,
+        userId,
+        date,
+        input.status,
+        context,
+      );
+      return plan.id;
+    });
+    return this.present(userId, planId);
+  }
+
+  async updateToday(
+    userId: string,
+    input: UpdateTodayPlan,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlan(transaction, userId, date);
+      this.assertOpen(plan);
+      this.assertVersion(plan, input.expectedVersion);
+
+      const workdayStart =
+        input.workdayStart ?? formatLocalTime(plan.workdayStart);
+      const workdayEnd = input.workdayEnd ?? formatLocalTime(plan.workdayEnd);
+      try {
+        availableWorkMinutes(workdayStart, workdayEnd);
+      } catch {
+        throw new BadRequestException({
+          code: 'INVALID_WORKDAY_BOUNDS',
+          message: 'Workday end must be after workday start.',
+        });
+      }
+
+      const update = await transaction.dailyPlan.updateMany({
+        where: {
+          id: plan.id,
+          userId,
+          status: { not: 'closed' },
+          version: plan.version,
+        },
+        data: {
+          ...(input.status ? { status: input.status } : {}),
+          ...(input.workdayStart
+            ? { workdayStart: parseLocalTime(input.workdayStart) }
+            : {}),
+          ...(input.workdayEnd
+            ? { workdayEnd: parseLocalTime(input.workdayEnd) }
+            : {}),
+          version: { increment: 1 },
+        },
+      });
+      if (update.count !== 1) this.throwVersionConflict();
+      return plan.id;
+    });
+    return this.present(userId, planId);
+  }
+
+  async addTodayItem(
+    userId: string,
+    input: AddDailyPlanItem,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlan(transaction, userId, date);
+      return this.addItem(transaction, userId, plan, date, context, input);
+    });
+    return this.present(userId, planId);
+  }
+
+  async scheduleTask(
+    userId: string,
+    taskId: string,
+    input: ScheduleTaskInput,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const today = localDateForInstant(this.clock.now(), context.timezone);
+    const date = validateLocalDate(input.planDate ?? today);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.ensurePlan(
+        transaction,
+        userId,
+        date,
+        date === today ? 'active' : 'draft',
+        context,
+      );
+      return this.addItem(transaction, userId, plan, date, context, {
+        taskId,
+        role: input.role,
+        ...(input.plannedStart !== undefined
+          ? { plannedStart: input.plannedStart }
+          : {}),
+        ...(input.plannedDurationMinutes !== undefined
+          ? { plannedDurationMinutes: input.plannedDurationMinutes }
+          : {}),
+        ...(input.position !== undefined ? { position: input.position } : {}),
+      });
+    });
+    return this.present(userId, planId);
+  }
+
+  async updateTodayItem(
+    userId: string,
+    itemId: string,
+    input: UpdateDailyPlanItem,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlanWithItems(transaction, userId, date);
+      this.assertOpen(plan);
+      this.assertVersion(plan, input.expectedPlanVersion);
+      const item = plan.items.find((candidate) => candidate.id === itemId);
+      if (!item) this.throwItemNotFound();
+      this.validatePlannedStart(input.plannedStart, date, context.timezone);
+
+      await this.bumpPlanVersion(transaction, plan);
+      const data: Prisma.DailyPlanItemUpdateInput = {};
+      if (input.role !== undefined) data.role = input.role;
+      if (input.plannedStart !== undefined) {
+        data.plannedStart = input.plannedStart
+          ? new Date(input.plannedStart)
+          : null;
+      }
+      if (input.plannedDurationMinutes !== undefined) {
+        data.plannedDurationMinutes = input.plannedDurationMinutes;
+      }
+      if (input.position !== undefined) {
+        const target = Math.min(input.position, plan.items.length - 1);
+        if (target < item.position) {
+          await transaction.dailyPlanItem.updateMany({
+            where: {
+              dailyPlanId: plan.id,
+              position: { gte: target, lt: item.position },
+            },
+            data: { position: { increment: 1 } },
+          });
+        } else if (target > item.position) {
+          await transaction.dailyPlanItem.updateMany({
+            where: {
+              dailyPlanId: plan.id,
+              position: { gt: item.position, lte: target },
+            },
+            data: { position: { decrement: 1 } },
+          });
+        }
+        data.position = target;
+      }
+      await transaction.dailyPlanItem.update({
+        where: { id: item.id },
+        data,
+      });
+      return plan.id;
+    });
+    return this.present(userId, planId);
+  }
+
+  async removeTodayItem(
+    userId: string,
+    itemId: string,
+    expectedPlanVersion: number,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlanWithItems(transaction, userId, date);
+      this.assertOpen(plan);
+      this.assertVersion(plan, expectedPlanVersion);
+      const item = plan.items.find((candidate) => candidate.id === itemId);
+      if (!item) this.throwItemNotFound();
+
+      await this.bumpPlanVersion(transaction, plan);
+      await transaction.dailyPlanItem.delete({ where: { id: item.id } });
+      await transaction.dailyPlanItem.updateMany({
+        where: { dailyPlanId: plan.id, position: { gt: item.position } },
+        data: { position: { decrement: 1 } },
+      });
+      const otherOpenPlans = await transaction.dailyPlanItem.count({
+        where: {
+          taskId: item.taskId,
+          dailyPlan: { status: { not: 'closed' } },
+        },
+      });
+      await this.lifecycle.unscheduleInTransaction(transaction, {
+        taskId: item.taskId,
+        userId,
+        dailyPlanId: plan.id,
+        planDate: date,
+        returnToBacklog: otherOpenPlans === 0,
+      });
+      return plan.id;
+    });
+    return this.present(userId, planId);
+  }
+
+  async closeToday(userId: string, input: CloseDailyPlan): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlanWithItemsAndTasks(
+        transaction,
+        userId,
+        date,
+      );
+      if (plan.status === 'closed') return plan.id;
+      if (
+        input.expectedPlanVersion !== undefined &&
+        input.expectedPlanVersion !== plan.version
+      ) {
+        this.throwVersionConflict();
+      }
+      await this.closeGuard.assertCanClose(transaction, userId);
+
+      const carryoverSignals: CarryoverSignal[] = [];
+      for (const item of plan.items) {
+        if (item.task.status === 'completed') {
+          const completedDuringDay = Boolean(
+            item.task.completedAt &&
+            localDateForInstant(item.task.completedAt, context.timezone) ===
+              date,
+          );
+          if (item.completedDuringDay !== completedDuringDay) {
+            await transaction.dailyPlanItem.update({
+              where: { id: item.id },
+              data: { completedDuringDay },
+            });
+          }
+          continue;
+        }
+        if (
+          !['planned', 'in_progress', 'waiting', 'blocked'].includes(
+            item.task.status,
+          )
+        ) {
+          continue;
+        }
+        const carried = await this.lifecycle.carryOverInTransaction(
+          transaction,
+          {
+            taskId: item.taskId,
+            userId,
+            dailyPlanId: plan.id,
+            planDate: date,
+          },
+        );
+        carryoverSignals.push({
+          taskId: item.taskId,
+          count: carried.carryoverCount,
+          level: carryoverSignalForCount(carried.carryoverCount, {
+            warning: this.config.carryoverWarningCount,
+            diagnosis: this.config.carryoverDiagnosisCount,
+            explicitChoice: this.config.carryoverExplicitChoiceCount,
+          }),
+        });
+      }
+
+      const closed = await transaction.dailyPlan.updateMany({
+        where: {
+          id: plan.id,
+          userId,
+          status: { not: 'closed' },
+          version: plan.version,
+        },
+        data: {
+          status: 'closed',
+          closedAt: this.clock.now(),
+          carryoverSignals:
+            carryoverSignals as unknown as Prisma.InputJsonArray,
+          version: { increment: 1 },
+        },
+      });
+      if (closed.count !== 1) this.throwVersionConflict();
+      return plan.id;
+    });
+    return this.present(userId, planId);
+  }
+
+  private async addItem(
+    transaction: Transaction,
+    userId: string,
+    plan: StoredDailyPlan,
+    date: string,
+    context: PlanningContext,
+    input: AddDailyPlanItem,
+  ): Promise<string> {
+    this.assertOpen(plan);
+    const task = await transaction.task.findFirst({
+      where: { id: input.taskId, userId },
+      select: { id: true },
+    });
+    if (!task) {
+      throw new NotFoundException({
+        code: 'TASK_NOT_FOUND',
+        message: 'Task was not found.',
+      });
+    }
+    const existing = await transaction.dailyPlanItem.findUnique({
+      where: {
+        dailyPlanId_taskId: { dailyPlanId: plan.id, taskId: input.taskId },
+      },
+    });
+    if (existing) return plan.id;
+    if (
+      input.expectedPlanVersion !== undefined &&
+      input.expectedPlanVersion !== plan.version
+    ) {
+      this.throwVersionConflict();
+    }
+    this.validatePlannedStart(input.plannedStart, date, context.timezone);
+
+    const itemCount = await transaction.dailyPlanItem.count({
+      where: { dailyPlanId: plan.id },
+    });
+    const position = Math.min(input.position ?? itemCount, itemCount);
+    await this.bumpPlanVersion(transaction, plan);
+    await transaction.dailyPlanItem.updateMany({
+      where: { dailyPlanId: plan.id, position: { gte: position } },
+      data: { position: { increment: 1 } },
+    });
+    await transaction.dailyPlanItem.create({
+      data: {
+        dailyPlanId: plan.id,
+        taskId: input.taskId,
+        role: input.role,
+        plannedStart: input.plannedStart ? new Date(input.plannedStart) : null,
+        plannedDurationMinutes: input.plannedDurationMinutes ?? null,
+        position,
+        addedDuringDay:
+          plan.status === 'active' &&
+          date === localDateForInstant(this.clock.now(), context.timezone),
+      },
+    });
+    await this.lifecycle.scheduleInTransaction(transaction, {
+      taskId: input.taskId,
+      userId,
+      dailyPlanId: plan.id,
+      planDate: date,
+    });
+    return plan.id;
+  }
+
+  private async present(userId: string, planId: string): Promise<DailyPlan> {
+    const [plan, context] = await Promise.all([
+      this.prisma.dailyPlan.findFirst({
+        where: { id: planId, userId },
+        include: {
+          items: {
+            orderBy: [{ position: 'asc' }, { id: 'asc' }],
+            include: { task: true },
+          },
+        },
+      }),
+      this.getPlanningContext(userId),
+    ]);
+    if (!plan) this.throwNotFound();
+    return toDailyPlanContract(plan, context);
+  }
+
+  private async getPlanningContext(userId: string): Promise<PlanningContext> {
+    const preferences = await this.prisma.userPreferences.findUnique({
+      where: { userId },
+      include: { user: { select: { timezone: true } } },
+    });
+    if (!preferences) {
+      throw new NotFoundException({
+        code: 'PREFERENCES_NOT_FOUND',
+        message: 'User preferences were not found.',
+      });
+    }
+    return {
+      timezone: preferences.user.timezone,
+      workdayStart: preferences.workdayStart,
+      workdayEnd: preferences.workdayEnd,
+      primaryLimit: preferences.primaryTaskLimit,
+      secondaryLimit: preferences.secondaryTaskLimit,
+      overCapacityPercent: preferences.capacityWarningPercent,
+    };
+  }
+
+  private async ensurePlan(
+    transaction: Transaction,
+    userId: string,
+    date: string,
+    status: 'draft' | 'active',
+    context: PlanningContext,
+  ): Promise<StoredDailyPlan> {
+    return transaction.dailyPlan.upsert({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      update: {},
+      create: {
+        userId,
+        date: databaseDate(date),
+        workdayStart: context.workdayStart,
+        workdayEnd: context.workdayEnd,
+        status,
+        createdAt: this.clock.now(),
+        updatedAt: this.clock.now(),
+      },
+    });
+  }
+
+  private async findPlan(
+    transaction: Transaction,
+    userId: string,
+    date: string,
+  ): Promise<StoredDailyPlan> {
+    const plan = await transaction.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+    });
+    if (!plan) this.throwNotFound();
+    return plan;
+  }
+
+  private async findPlanWithItems(
+    transaction: Transaction,
+    userId: string,
+    date: string,
+  ) {
+    const plan = await transaction.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      include: { items: { orderBy: [{ position: 'asc' }, { id: 'asc' }] } },
+    });
+    if (!plan) this.throwNotFound();
+    return plan;
+  }
+
+  private async findPlanWithItemsAndTasks(
+    transaction: Transaction,
+    userId: string,
+    date: string,
+  ) {
+    const plan = await transaction.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      include: {
+        items: {
+          orderBy: [{ position: 'asc' }, { id: 'asc' }],
+          include: { task: true },
+        },
+      },
+    });
+    if (!plan) this.throwNotFound();
+    return plan;
+  }
+
+  private async bumpPlanVersion(
+    transaction: Transaction,
+    plan: Pick<StoredDailyPlan, 'id' | 'userId' | 'version'>,
+  ): Promise<void> {
+    const update = await transaction.dailyPlan.updateMany({
+      where: {
+        id: plan.id,
+        userId: plan.userId,
+        status: { not: 'closed' },
+        version: plan.version,
+      },
+      data: { version: { increment: 1 } },
+    });
+    if (update.count !== 1) this.throwVersionConflict();
+  }
+
+  private validatePlannedStart(
+    plannedStart: string | null | undefined,
+    date: string,
+    timezone: string,
+  ): void {
+    if (!plannedStart) return;
+    if (localDateForInstant(new Date(plannedStart), timezone) !== date) {
+      throw new BadRequestException({
+        code: 'PLANNED_START_OUTSIDE_PLAN_DATE',
+        message:
+          'Planned start must fall on the plan date in the user timezone.',
+      });
+    }
+  }
+
+  private assertOpen(plan: Pick<StoredDailyPlan, 'status'>): void {
+    if (plan.status === 'closed') {
+      throw new ConflictException({
+        code: 'DAILY_PLAN_CLOSED',
+        message: 'A closed daily plan cannot be changed.',
+      });
+    }
+  }
+
+  private assertVersion(
+    plan: Pick<StoredDailyPlan, 'version'>,
+    expectedVersion: number,
+  ): void {
+    if (plan.version !== expectedVersion) this.throwVersionConflict();
+  }
+
+  private throwNotFound(): never {
+    throw new NotFoundException({
+      code: 'DAILY_PLAN_NOT_FOUND',
+      message: 'Daily plan was not found.',
+    });
+  }
+
+  private throwItemNotFound(): never {
+    throw new NotFoundException({
+      code: 'DAILY_PLAN_ITEM_NOT_FOUND',
+      message: 'Daily plan item was not found.',
+    });
+  }
+
+  private throwVersionConflict(): never {
+    throw new ConflictException({
+      code: 'DAILY_PLAN_VERSION_CONFLICT',
+      message: 'Daily plan changed before the mutation could be applied.',
+    });
+  }
+}

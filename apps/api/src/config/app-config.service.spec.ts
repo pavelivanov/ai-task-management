@@ -29,5 +29,20 @@ describe('AppConfig', () => {
     expect(config.sessionCookieName).toBe('execution_session');
     expect(config.sessionTtlDays).toBe(30);
     expect(config.isProduction).toBe(false);
+    expect(config.carryoverWarningCount).toBe(2);
+    expect(config.carryoverDiagnosisCount).toBe(3);
+    expect(config.carryoverExplicitChoiceCount).toBe(5);
+  });
+
+  it('requires strictly increasing carryover thresholds', () => {
+    expect(
+      () =>
+        new AppConfig({
+          ...validEnvironment,
+          CARRYOVER_WARNING_COUNT: '3',
+          CARRYOVER_DIAGNOSIS_COUNT: '3',
+          CARRYOVER_EXPLICIT_CHOICE_COUNT: '5',
+        }),
+    ).toThrow();
   });
 });

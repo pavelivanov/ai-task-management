@@ -51,13 +51,16 @@ Run the narrowest relevant workspace command while iterating, then run
 
 ## Completion and Git workflow
 
-- Treat a successful commit and push as mandatory parts of the definition of
-  done for every completed implementation task.
+- Treat a successful commit, push, and pull request as mandatory parts of the
+  definition of done for every completed implementation task.
 - After the required verification passes, audit the diff, stage only the
   intended files, create a Conventional Commit, and push the current branch.
   If it has no upstream, set one with `git push --set-upstream origin <branch>`.
+- Immediately after the push succeeds, open a pull request from the current
+  branch to the repository's default branch. Create it as a draft unless the
+  user explicitly requests a ready-for-review pull request.
 - Do not report the work as complete while intended changes remain only in the
-  working tree, only in the index, or only in a local commit. If the push is
-  blocked, report the blocker instead of claiming completion.
-- Never force-push or open a pull request unless the user explicitly requests
-  it.
+  working tree, only in the index, only in a local commit, or on a pushed branch
+  without a pull request. If the push or pull-request creation is blocked,
+  report the blocker instead of claiming completion.
+- Never force-push unless the user explicitly requests it.

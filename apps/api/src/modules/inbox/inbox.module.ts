@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 
 import { AppConfigModule } from '../../config/app-config.module';
 import { AuthModule } from '../auth/auth.module';
+import { DailyPlansModule } from '../daily-plans/daily-plans.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
 
 @Module({
-  imports: [AppConfigModule, AuthModule, TasksModule],
+  imports: [AppConfigModule, AuthModule, DailyPlansModule, TasksModule],
   controllers: [InboxController],
   providers: [InboxService],
 })

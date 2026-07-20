@@ -21,6 +21,9 @@ const environmentSchema = z
       .regex(/^[a-zA-Z0-9_-]+$/)
       .default('execution_session'),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    CARRYOVER_WARNING_COUNT: z.coerce.number().int().min(1).default(2),
+    CARRYOVER_DIAGNOSIS_COUNT: z.coerce.number().int().min(2).default(3),
+    CARRYOVER_EXPLICIT_CHOICE_COUNT: z.coerce.number().int().min(3).default(5),
   })
   .transform((value, context) => {
     const allowedCallbackUrls = value.AUTH_ALLOWED_CALLBACK_URLS.split(',')
@@ -38,6 +41,17 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
+    if (
+      value.CARRYOVER_WARNING_COUNT >= value.CARRYOVER_DIAGNOSIS_COUNT ||
+      value.CARRYOVER_DIAGNOSIS_COUNT >= value.CARRYOVER_EXPLICIT_CHOICE_COUNT
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Carryover thresholds must be strictly increasing.',
+        path: ['CARRYOVER_WARNING_COUNT'],
+      });
+      return z.NEVER;
+    }
 
     return {
       nodeEnvironment: value.NODE_ENV,
@@ -51,6 +65,9 @@ const environmentSchema = z
       webOrigins,
       sessionCookieName: value.SESSION_COOKIE_NAME,
       sessionTtlDays: value.SESSION_TTL_DAYS,
+      carryoverWarningCount: value.CARRYOVER_WARNING_COUNT,
+      carryoverDiagnosisCount: value.CARRYOVER_DIAGNOSIS_COUNT,
+      carryoverExplicitChoiceCount: value.CARRYOVER_EXPLICIT_CHOICE_COUNT,
     };
   });
 
@@ -69,6 +86,9 @@ export class AppConfig {
   readonly webOrigins!: string[];
   readonly sessionCookieName!: string;
   readonly sessionTtlDays!: number;
+  readonly carryoverWarningCount!: number;
+  readonly carryoverDiagnosisCount!: number;
+  readonly carryoverExplicitChoiceCount!: number;
 
   constructor(
     @Optional()

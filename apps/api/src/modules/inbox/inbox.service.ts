@@ -9,6 +9,7 @@ import type {
   TaskStatus,
 } from '@execution/contracts';
 
+import { DailyPlansService } from '../daily-plans/daily-plans.service';
 import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
 import { TasksService } from '../tasks/tasks.service';
 
@@ -17,6 +18,7 @@ export class InboxService {
   constructor(
     private readonly tasks: TasksService,
     private readonly lifecycle: TaskLifecycleService,
+    private readonly dailyPlans: DailyPlansService,
   ) {}
 
   capture(userId: string, input: CaptureInboxTask): Promise<Task> {
@@ -33,6 +35,19 @@ export class InboxService {
     input: ProcessInboxTask,
   ): Promise<ProcessInboxResult> {
     const current = await this.tasks.get(userId, taskId);
+    if (input.action === 'schedule') {
+      return this.dailyPlans.scheduleTask(userId, taskId, {
+        ...(input.planDate ? { planDate: input.planDate } : {}),
+        role: input.role,
+        ...(input.plannedStart !== undefined
+          ? { plannedStart: input.plannedStart }
+          : {}),
+        ...(input.plannedDurationMinutes !== undefined
+          ? { plannedDurationMinutes: input.plannedDurationMinutes }
+          : {}),
+        ...(input.position !== undefined ? { position: input.position } : {}),
+      });
+    }
     if (input.action === 'delete') {
       if (current.status !== 'inbox') this.throwInvalidAction();
       await this.tasks.delete(userId, taskId);
@@ -44,7 +59,7 @@ export class InboxService {
       archive: 'archived',
       cancel: 'cancelled',
     } as const satisfies Record<
-      Exclude<ProcessInboxTask['action'], 'delete'>,
+      Exclude<ProcessInboxTask['action'], 'delete' | 'schedule'>,
       TaskStatus
     >;
     const target = targetByAction[input.action];

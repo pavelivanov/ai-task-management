@@ -59,6 +59,18 @@ enum TaskEventType {
   ai_suggestion_accepted
 }
 
+enum DailyPlanStatus {
+  draft
+  active
+  closed
+}
+
+enum DailyPlanRole {
+  primary
+  secondary
+  optional
+}
+
 model User {
   id                  String           @id @default(uuid()) @db.Uuid
   email               String           @unique @db.VarChar(320)
@@ -75,6 +87,7 @@ model User {
   projects            Project[]
   tasks               Task[]
   taskEvents          TaskEvent[]
+  dailyPlans          DailyPlan[]
 
   @@index([disabledAt])
   @@map("users")
@@ -150,27 +163,28 @@ model Project {
 }
 
 model Task {
-  id              String       @id @default(uuid()) @db.Uuid
-  userId          String       @db.Uuid
-  title           String       @db.VarChar(240)
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @db.Uuid
+  title           String          @db.VarChar(240)
   description     String?
   category        TaskCategory
   status          TaskStatus
-  priority        TaskPriority @default(normal)
+  priority        TaskPriority    @default(normal)
   estimateMinutes Int?
   dueAt           DateTime?
-  projectId       String?      @db.Uuid
-  parentTaskId    String?      @db.Uuid
-  carryoverCount  Int          @default(0)
-  version         Int          @default(1)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  projectId       String?         @db.Uuid
+  parentTaskId    String?         @db.Uuid
+  carryoverCount  Int             @default(0)
+  version         Int             @default(1)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   completedAt     DateTime?
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parentTask      Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: NoAction)
-  subtasks        Task[]       @relation("TaskHierarchy")
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentTask      Task?           @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: NoAction)
+  subtasks        Task[]          @relation("TaskHierarchy")
   events          TaskEvent[]
+  dailyPlanItems  DailyPlanItem[]
 
   @@index([userId, status, createdAt, id])
   @@index([userId, projectId, status])
@@ -193,4 +207,45 @@ model TaskEvent {
   @@index([taskId, createdAt, id])
   @@index([userId, createdAt, id])
   @@map("task_events")
+}
+
+model DailyPlan {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String          @db.Uuid
+  date             DateTime        @db.Date
+  workdayStart     DateTime        @db.Time(0)
+  workdayEnd       DateTime        @db.Time(0)
+  status           DailyPlanStatus @default(draft)
+  version          Int             @default(1)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  closedAt         DateTime?
+  carryoverSignals Json            @default("[]")
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items            DailyPlanItem[]
+
+  @@unique([userId, date])
+  @@index([userId, status, date])
+  @@map("daily_plans")
+}
+
+model DailyPlanItem {
+  id                     String        @id @default(uuid()) @db.Uuid
+  dailyPlanId            String        @db.Uuid
+  taskId                 String        @db.Uuid
+  role                   DailyPlanRole
+  plannedStart           DateTime?     @db.Timestamptz(3)
+  plannedDurationMinutes Int?
+  position               Int
+  addedDuringDay         Boolean       @default(false)
+  completedDuringDay     Boolean       @default(false)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  dailyPlan              DailyPlan     @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+  task                   Task          @relation(fields: [taskId], references: [id], onDelete: NoAction)
+
+  @@unique([dailyPlanId, taskId])
+  @@index([dailyPlanId, position, id])
+  @@index([taskId, dailyPlanId])
+  @@map("daily_plan_items")
 }
