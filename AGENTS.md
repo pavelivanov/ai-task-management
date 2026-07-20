@@ -48,3 +48,11 @@ Run the narrowest relevant workspace command while iterating, then run
 - Every user-owned repository or service method must require `userId` from the
   authenticated request context; never accept ownership authority from a body.
 - Use Conventional Commits for commit messages.
+
+## Completion and Git workflow
+
+- When implementation work is complete and the required verification passes,
+  commit all intended changes to the current branch and push that branch to its
+  configured upstream remote.
+- Do not leave completed work only in the working tree or only in a local
+  commit. Never force-push unless the user explicitly requests it.
