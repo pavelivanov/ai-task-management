@@ -1,5 +1,6 @@
 export * from './daily-plans/index.js';
 export * from './focus/index.js';
+export * from './reviews/index.js';
 export * from './tasks/index.js';
 
 export function normalizeMinutes(minutes: number): number {

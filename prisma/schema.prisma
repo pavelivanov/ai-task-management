@@ -104,6 +104,7 @@ model User {
   taskEvents          TaskEvent[]
   dailyPlans          DailyPlan[]
   focusSessions       FocusSession[]
+  dailyReviews        DailyReview[]
 
   @@index([disabledAt])
   @@map("users")
@@ -302,4 +303,26 @@ model FocusSessionSegment {
   @@unique([focusSessionId, sequence])
   @@index([focusSessionId, startedAt, id])
   @@map("focus_session_segments")
+}
+
+model DailyReview {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @db.Uuid
+  date                    DateTime @db.Date
+  primaryOutcomeCompleted Boolean  @default(false)
+  focusedMinutes          Int      @default(0)
+  completedPlannedTasks   Int      @default(0)
+  completedUnplannedTasks Int      @default(0)
+  carriedOverTasks        Int      @default(0)
+  focusSessions           Int      @default(0)
+  interruptionCount       Int      @default(0)
+  userReflection          String?
+  assistantSummary        String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("daily_reviews")
 }
