@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { updateUserPreferencesSchema, userPreferencesSchema } from './index.js';
+import {
+  deleteAccountSchema,
+  updateUserPreferencesSchema,
+  userPreferencesSchema,
+} from './index.js';
 
 const validPreferences = {
   timezone: 'Europe/Moscow',
@@ -45,6 +49,24 @@ describe('user preference contracts', () => {
     expect(() =>
       updateUserPreferencesSchema.parse({
         userId: 'e7e79a9d-82ce-4d50-a0e8-042b681e6ad7',
+      }),
+    ).toThrow();
+  });
+
+  it('requires an exact deletion phrase and valid confirmation email', () => {
+    expect(
+      deleteAccountSchema.parse({
+        confirmation: 'DELETE',
+        confirmationEmail: 'pilot@example.test',
+      }),
+    ).toEqual({
+      confirmation: 'DELETE',
+      confirmationEmail: 'pilot@example.test',
+    });
+    expect(() =>
+      deleteAccountSchema.parse({
+        confirmation: 'delete',
+        confirmationEmail: 'pilot@example.test',
       }),
     ).toThrow();
   });

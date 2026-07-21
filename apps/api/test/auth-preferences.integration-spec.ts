@@ -92,7 +92,7 @@ describe('authentication and user preference boundaries', () => {
       .useValue(identityProvider)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);

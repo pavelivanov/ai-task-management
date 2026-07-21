@@ -48,7 +48,7 @@ describe('deterministic behavior and notification boundaries', () => {
       .overrideProvider(CLOCK)
       .useValue(clock)
       .compile();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);

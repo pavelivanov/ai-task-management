@@ -21,6 +21,7 @@ import type { Request, Response } from 'express';
 import { ZodValidationPipe } from '../../common/http/zod-validation.pipe';
 import { AppConfig } from '../../config/app-config.service';
 import { AuthCookieService } from './auth-cookie.service';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import { AuthService } from './auth.service';
 import { CsrfOriginGuard } from './csrf-origin.guard';
 import { CurrentUser } from './current-user.decorator';
@@ -35,6 +36,7 @@ export class AuthController {
   ) {}
 
   @Get('google')
+  @UseGuards(AuthRateLimitGuard)
   startGoogleLogin(@Res() response: Response): void {
     const secrets = this.cookies.createOAuthSecrets();
     this.cookies.setOAuthCookies(response, secrets);
@@ -42,6 +44,7 @@ export class AuthController {
   }
 
   @Get('google/callback')
+  @UseGuards(AuthRateLimitGuard)
   async completeGoogleLogin(
     @Query(new ZodValidationPipe(oauthCallbackQuerySchema))
     query: OAuthCallbackQuery,
@@ -77,7 +80,7 @@ export class AuthController {
   }
 
   @Post('e2e/login')
-  @UseGuards(CsrfOriginGuard)
+  @UseGuards(CsrfOriginGuard, AuthRateLimitGuard)
   async e2eLogin(
     @Body(new ZodValidationPipe(e2eLoginSchema)) input: E2eLogin,
     @Req() request: Request,

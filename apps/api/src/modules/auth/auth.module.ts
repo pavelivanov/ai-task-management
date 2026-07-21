@@ -4,6 +4,7 @@ import { AppConfigModule } from '../../config/app-config.module';
 import { DatabaseModule } from '../../database/database.module';
 import { AuthController } from './auth.controller';
 import { AuthCookieService } from './auth-cookie.service';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import { AuthService } from './auth.service';
 import { CLOCK, SystemClock } from './clock';
 import { CsrfOriginGuard } from './csrf-origin.guard';
@@ -17,6 +18,7 @@ import { SessionCleanupScheduler } from './session-cleanup.scheduler';
   controllers: [AuthController],
   providers: [
     AuthCookieService,
+    AuthRateLimitGuard,
     AuthService,
     CsrfOriginGuard,
     SessionAuthGuard,

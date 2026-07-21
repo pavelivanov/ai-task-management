@@ -22,6 +22,26 @@ const environmentSchema = z
       .regex(/^[a-zA-Z0-9_-]+$/)
       .default('execution_session'),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    ACCOUNT_DELETION_REAUTH_MINUTES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(60)
+      .default(10),
+    REQUEST_BODY_LIMIT_KB: z.coerce.number().int().min(8).max(1024).default(64),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+    API_RATE_LIMIT_PER_MINUTE: z.coerce
+      .number()
+      .int()
+      .min(10)
+      .max(10_000)
+      .default(300),
+    AUTH_RATE_LIMIT_PER_MINUTE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(10),
     CARRYOVER_WARNING_COUNT: z.coerce.number().int().min(1).default(2),
     CARRYOVER_DIAGNOSIS_COUNT: z.coerce.number().int().min(2).default(3),
     CARRYOVER_EXPLICIT_CHOICE_COUNT: z.coerce.number().int().min(3).default(5),
@@ -70,6 +90,24 @@ const environmentSchema = z
       .min(1)
       .max(365)
       .default(30),
+    NOTIFICATION_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(90),
+    REVOKED_PUSH_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30),
+    RETENTION_SWEEP_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .max(86_400_000)
+      .default(3_600_000),
     ASSISTANT_WORKER_INTERVAL_MS: z.coerce
       .number()
       .int()
@@ -210,6 +248,11 @@ const environmentSchema = z
       e2eAuthEnabled: value.E2E_AUTH_ENABLED === 'true',
       sessionCookieName: value.SESSION_COOKIE_NAME,
       sessionTtlDays: value.SESSION_TTL_DAYS,
+      accountDeletionReauthMinutes: value.ACCOUNT_DELETION_REAUTH_MINUTES,
+      requestBodyLimitKb: value.REQUEST_BODY_LIMIT_KB,
+      trustProxyHops: value.TRUST_PROXY_HOPS,
+      apiRateLimitPerMinute: value.API_RATE_LIMIT_PER_MINUTE,
+      authRateLimitPerMinute: value.AUTH_RATE_LIMIT_PER_MINUTE,
       carryoverWarningCount: value.CARRYOVER_WARNING_COUNT,
       carryoverDiagnosisCount: value.CARRYOVER_DIAGNOSIS_COUNT,
       carryoverExplicitChoiceCount: value.CARRYOVER_EXPLICIT_CHOICE_COUNT,
@@ -224,6 +267,9 @@ const environmentSchema = z
       assistantRateLimitPerMinute: value.ASSISTANT_RATE_LIMIT_PER_MINUTE,
       assistantMaxConcurrencyPerUser: value.ASSISTANT_MAX_CONCURRENCY_PER_USER,
       assistantRetentionDays: value.ASSISTANT_RETENTION_DAYS,
+      notificationRetentionDays: value.NOTIFICATION_RETENTION_DAYS,
+      revokedPushRetentionDays: value.REVOKED_PUSH_RETENTION_DAYS,
+      retentionSweepIntervalMs: value.RETENTION_SWEEP_INTERVAL_MS,
       assistantWorkerIntervalMs: value.ASSISTANT_WORKER_INTERVAL_MS,
       assistantLeaseSeconds: value.ASSISTANT_LEASE_SECONDS,
       behaviorSchedulerIntervalMs: value.BEHAVIOR_SCHEDULER_INTERVAL_MS,
@@ -253,6 +299,11 @@ export class AppConfig {
   readonly e2eAuthEnabled!: boolean;
   readonly sessionCookieName!: string;
   readonly sessionTtlDays!: number;
+  readonly accountDeletionReauthMinutes!: number;
+  readonly requestBodyLimitKb!: number;
+  readonly trustProxyHops!: number;
+  readonly apiRateLimitPerMinute!: number;
+  readonly authRateLimitPerMinute!: number;
   readonly carryoverWarningCount!: number;
   readonly carryoverDiagnosisCount!: number;
   readonly carryoverExplicitChoiceCount!: number;
@@ -267,6 +318,9 @@ export class AppConfig {
   readonly assistantRateLimitPerMinute!: number;
   readonly assistantMaxConcurrencyPerUser!: number;
   readonly assistantRetentionDays!: number;
+  readonly notificationRetentionDays!: number;
+  readonly revokedPushRetentionDays!: number;
+  readonly retentionSweepIntervalMs!: number;
   readonly assistantWorkerIntervalMs!: number;
   readonly assistantLeaseSeconds!: number;
   readonly behaviorSchedulerIntervalMs!: number;

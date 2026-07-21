@@ -28,6 +28,11 @@ describe('AppConfig', () => {
 
     expect(config.sessionCookieName).toBe('execution_session');
     expect(config.sessionTtlDays).toBe(30);
+    expect(config.accountDeletionReauthMinutes).toBe(10);
+    expect(config.requestBodyLimitKb).toBe(64);
+    expect(config.trustProxyHops).toBe(0);
+    expect(config.apiRateLimitPerMinute).toBe(300);
+    expect(config.authRateLimitPerMinute).toBe(10);
     expect(config.isProduction).toBe(false);
     expect(config.carryoverWarningCount).toBe(2);
     expect(config.carryoverDiagnosisCount).toBe(3);
@@ -36,6 +41,9 @@ describe('AppConfig', () => {
     expect(config.sseMaxSubscribersPerUser).toBe(5);
     expect(config.sseMaxSubscribersTotal).toBe(1_000);
     expect(config.e2eAuthEnabled).toBe(false);
+    expect(config.notificationRetentionDays).toBe(90);
+    expect(config.revokedPushRetentionDays).toBe(30);
+    expect(config.retentionSweepIntervalMs).toBe(3_600_000);
   });
 
   it('requires strictly increasing carryover thresholds', () => {

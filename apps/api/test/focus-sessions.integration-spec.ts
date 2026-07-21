@@ -183,7 +183,7 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
       .useValue(activationBarrier)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);

@@ -110,6 +110,19 @@ content-free `suggestion.changed` invalidations. Prompt bodies are not logged;
 stored context expires on the configured retention boundary, and deleting a
 task purges retained assistant context for that owner.
 
+The API applies Helmet security headers, strict configured CORS, an explicit
+request-body limit, a global per-IP request limit, tighter authentication IP
+limits, and per-user assistant limits. `TRUST_PROXY_HOPS` defaults to `0`; set it
+only to the exact trusted reverse-proxy hop count so client-supplied forwarding
+headers cannot bypass IP controls.
+
+Account deletion is available in Settings and through `DELETE /users/me`. It
+requires a session created by a recent sign-in, the exact `DELETE` phrase, the
+signed-in email address, and an allowlisted Origin. It clears every user-owned
+database row, closes live event streams, and clears the session cookie. See
+`docs/security/data-retention-and-deletion.md` for assistant, notification,
+session, and push-subscription expiry boundaries.
+
 ## Verification
 
 Run the complete non-browser gate with:
@@ -129,6 +142,11 @@ automated accessibility gate run with:
 npm run test:e2e:install
 npm run test:e2e
 ```
+
+`npm run security:matrix` verifies that every controller route and Prisma model
+appears in `docs/security/control-matrix.md`. `npm run security:secrets` scans
+tracked and pending files for credential files and known provider token formats.
+Both checks are part of `npm run verify`.
 
 Integration and browser tests recreate the isolated test database. The API's
 deterministic test-login endpoint is disabled by default and is rejected in
