@@ -212,6 +212,16 @@ textarea::placeholder {
   color: var(--green-dark);
 }
 
+.button--danger {
+  border-color: var(--red);
+  background: var(--red);
+  color: white;
+}
+
+.button--danger:hover:not(:disabled) {
+  background: #6f2f29;
+}
+
 .button--large {
   min-height: 3.25rem;
   padding-inline: 1.35rem;
@@ -1499,6 +1509,20 @@ label > textarea {
   padding: 0 0.45rem;
   font-family: Georgia, serif;
   font-size: 1.25rem;
+}
+
+.settings-form .danger-zone {
+  border-color: #d2a19d;
+  background: var(--red-pale);
+}
+
+.danger-zone .field-note {
+  max-width: 70ch;
+  margin-top: 0;
+}
+
+.danger-zone .error-message {
+  margin: 1rem 0;
 }
 
 .form-grid {

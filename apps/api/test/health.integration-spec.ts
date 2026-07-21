@@ -13,7 +13,7 @@ describe('GET /health', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.init();
   });

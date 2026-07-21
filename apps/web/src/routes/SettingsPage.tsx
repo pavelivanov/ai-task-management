@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import {
+  deleteAccount,
   getPreferences,
   updatePreferences,
 } from '../features/settings/settings-api';
+import { loginUrl } from '../features/auth/auth';
 import {
   browserPushState,
   detectBrowserPushState,
@@ -34,15 +36,21 @@ export function SettingsPage() {
     );
   }
   return preferences.data ? (
-    <SettingsForm initial={preferences.data} userId={user.id} />
+    <SettingsForm
+      initial={preferences.data}
+      userEmail={user.email}
+      userId={user.id}
+    />
   ) : null;
 }
 
 function SettingsForm({
   initial,
+  userEmail,
   userId,
 }: {
   initial: UserPreferences;
+  userEmail: string;
   userId: string;
 }) {
   const queryClient = useQueryClient();
@@ -52,6 +60,9 @@ function SettingsForm({
     browserPushState(),
   );
   const [pushPending, setPushPending] = useState(false);
+  const [deletePhrase, setDeletePhrase] = useState('');
+  const [deleteEmail, setDeleteEmail] = useState('');
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: () => updatePreferences(form),
     onSuccess: (data) => {
@@ -66,9 +77,30 @@ function SettingsForm({
       ),
   });
   const timezoneValid = timeZoneSchema.safeParse(form.timezone).success;
+  const accountConfirmationValid =
+    deletePhrase === 'DELETE' &&
+    deleteEmail.trim().toLowerCase() === userEmail.toLowerCase();
   const notificationBenefitSelected =
     form.notificationsEnabled &&
     (form.morningPlanningReminder || form.endOfDayReminder);
+  const removeAccount = useMutation({
+    mutationFn: () =>
+      deleteAccount({
+        confirmation: 'DELETE',
+        confirmationEmail: deleteEmail,
+      }),
+    onSuccess: () => {
+      queryClient.clear();
+      window.location.assign('/');
+    },
+    onError: (error) =>
+      setDeleteMessage(
+        isApiError(error) ? error.message : 'The account could not be deleted.',
+      ),
+  });
+  const reauthenticationRequired =
+    isApiError(removeAccount.error) &&
+    removeAccount.error.code === 'ACCOUNT_REAUTHENTICATION_REQUIRED';
 
   useEffect(() => {
     void detectBrowserPushState().then(setPushState);
@@ -358,6 +390,58 @@ function SettingsForm({
               )}
             </div>
           )}
+        </fieldset>
+
+        <fieldset className="danger-zone">
+          <legend>Delete account</legend>
+          <p className="field-note" id="account-deletion-help">
+            This permanently deletes tasks, plans, focus history, assistant
+            context, notifications, and push subscriptions. Sign in again first
+            if your current session is no longer recent.
+          </p>
+          <div className="form-grid form-grid--small">
+            <label>
+              Account email
+              <input
+                aria-describedby="account-deletion-help"
+                autoComplete="email"
+                name="confirmationEmail"
+                onChange={(event) => setDeleteEmail(event.target.value)}
+                type="email"
+                value={deleteEmail}
+              />
+            </label>
+            <label>
+              Type DELETE
+              <input
+                aria-describedby="account-deletion-help"
+                autoComplete="off"
+                name="deleteConfirmation"
+                onChange={(event) => setDeletePhrase(event.target.value)}
+                spellCheck={false}
+                value={deletePhrase}
+              />
+            </label>
+          </div>
+          {deleteMessage && (
+            <p className="error-message" role="alert">
+              {deleteMessage}{' '}
+              {reauthenticationRequired && (
+                <a href={loginUrl()}>Sign in again with Google</a>
+              )}
+            </p>
+          )}
+          <button
+            className="button button--danger"
+            disabled={!accountConfirmationValid || removeAccount.isPending}
+            onClick={() => {
+              setDeleteMessage(null);
+              removeAccount.mutate();
+            }}
+            type="button"
+          >
+            Permanently delete account
+          </button>
         </fieldset>
 
         {message && (

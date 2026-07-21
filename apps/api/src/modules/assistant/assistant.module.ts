@@ -11,6 +11,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { AssistantContextService } from './assistant-context.service';
 import { AssistantController } from './assistant.controller';
 import { AssistantRateLimiter } from './assistant-rate-limiter';
+import { AssistantRequestRateLimitGuard } from './assistant-request-rate-limit.guard';
 import { AssistantSemanticValidator } from './assistant-semantic-validator';
 import { AssistantService } from './assistant.service';
 import { AssistantWorkerService } from './assistant-worker.service';
@@ -33,6 +34,7 @@ import { OpenAiLlmProvider } from './openai-llm.provider';
   providers: [
     AssistantContextService,
     AssistantRateLimiter,
+    AssistantRequestRateLimitGuard,
     AssistantSemanticValidator,
     AssistantService,
     AssistantWorkerService,

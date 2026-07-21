@@ -8,7 +8,6 @@ import { randomUUID } from 'node:crypto';
 
 import { AppConfig } from '../../config/app-config.service';
 import { PrismaService } from '../../database/prisma.service';
-import { Prisma } from '../../generated/prisma/client';
 import { type Clock, CLOCK } from '../auth/clock';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
 import { AssistantService } from './assistant.service';
@@ -43,7 +42,6 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return false;
     this.running = true;
     try {
-      await this.expireOldSuggestions();
       const claimed = await this.claimOne();
       if (!claimed) return false;
       const result = await this.assistant.process(claimed.id, true);
@@ -124,36 +122,6 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.aiSuggestion.findUnique({
       where: { id: candidate.id },
     });
-  }
-
-  private async expireOldSuggestions(): Promise<void> {
-    const expired = await this.prisma.aiSuggestion.findMany({
-      where: {
-        expiresAt: { lte: this.clock.now() },
-        status: { in: ['queued', 'running', 'completed', 'failed'] },
-      },
-      select: { id: true },
-      take: 50,
-    });
-    for (const suggestion of expired) {
-      await this.prisma.aiSuggestion.updateMany({
-        where: {
-          id: suggestion.id,
-          status: { in: ['queued', 'running', 'completed', 'failed'] },
-        },
-        data: {
-          status: 'expired',
-          inputContext: { expired: true },
-          output: Prisma.JsonNull,
-          providerRequestId: null,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          nextAttemptAt: null,
-          version: { increment: 1 },
-        },
-      });
-      await this.publishCurrent(suggestion.id);
-    }
   }
 
   private async publishCurrent(suggestionId: string): Promise<void> {

@@ -29,9 +29,11 @@
     "test:e2e": "npm run db:migrate:test && playwright test",
     "test:e2e:install": "playwright install chromium",
     "postinstall": "prisma generate && npm run build --workspace packages/domain && npm run build --workspace packages/contracts",
+    "security:matrix": "node scripts/verify-security-matrix.mjs",
+    "security:secrets": "node scripts/scan-secrets.mjs",
     "test:integration": "npm run db:migrate:test && npm run test:integration --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build && npm run compose:validate"
+    "verify": "npm run format:check && npm run security:matrix && npm run security:secrets && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build && npm run compose:validate"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

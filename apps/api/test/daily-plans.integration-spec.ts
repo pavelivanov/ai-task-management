@@ -79,7 +79,7 @@ describe('daily planning and carryover boundaries', () => {
       .useValue(clock)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);

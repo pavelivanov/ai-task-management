@@ -126,6 +126,13 @@ export class InvalidationStreamService implements OnModuleDestroy {
       : (this.subscribers.get(userId)?.size ?? 0);
   }
 
+  closeUser(userId: string): void {
+    for (const subscriber of this.subscribers.get(userId)?.values() ?? []) {
+      subscriber.cleanup();
+      if (!subscriber.response.writableEnded) subscriber.response.end();
+    }
+  }
+
   onModuleDestroy(): void {
     for (const subscribers of this.subscribers.values()) {
       for (const subscriber of subscribers.values()) {

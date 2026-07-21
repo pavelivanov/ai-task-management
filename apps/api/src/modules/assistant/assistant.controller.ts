@@ -26,6 +26,7 @@ import { CsrfOriginGuard } from '../auth/csrf-origin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { AssistantService } from './assistant.service';
+import { AssistantRequestRateLimitGuard } from './assistant-request-rate-limit.guard';
 
 @Controller('assistant/suggestions')
 @UseGuards(SessionAuthGuard)
@@ -33,7 +34,7 @@ export class AssistantController {
   constructor(private readonly assistant: AssistantService) {}
 
   @Post()
-  @UseGuards(CsrfOriginGuard)
+  @UseGuards(CsrfOriginGuard, AssistantRequestRateLimitGuard)
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createAssistantSuggestionSchema))

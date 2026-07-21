@@ -188,6 +188,7 @@ export function selectWaitingCandidates<T extends WaitingCandidate>(
         PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority] ||
         (left.dueAt?.getTime() ?? Number.POSITIVE_INFINITY) -
           (right.dueAt?.getTime() ?? Number.POSITIVE_INFINITY) ||
+        left.estimateMinutes! - right.estimateMinutes! ||
         left.createdAt.getTime() - right.createdAt.getTime() ||
         left.id.localeCompare(right.id),
     )

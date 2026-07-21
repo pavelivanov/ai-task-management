@@ -98,6 +98,14 @@ export const updateUserPreferencesSchema = z
   .partial()
   .strict();
 
+export const deleteAccountSchema = z
+  .object({
+    confirmation: z.literal('DELETE'),
+    confirmationEmail: z.email().max(320),
+  })
+  .strict();
+
 export type AiInterruptionLevel = z.infer<typeof aiInterruptionLevelSchema>;
 export type UserPreferences = z.infer<typeof userPreferencesSchema>;
 export type UpdateUserPreferences = z.infer<typeof updateUserPreferencesSchema>;
+export type DeleteAccount = z.infer<typeof deleteAccountSchema>;

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -139,6 +140,33 @@ export class AuthService {
     });
   }
 
+  async assertRecentlyAuthenticated(
+    userId: string,
+    sessionToken: string,
+    maximumAgeMinutes: number,
+  ): Promise<void> {
+    const now = this.clock.now();
+    const authenticatedAfter = new Date(
+      now.getTime() - maximumAgeMinutes * 60 * 1_000,
+    );
+    const session = await this.prisma.authSession.findFirst({
+      where: {
+        userId,
+        tokenHash: hashOpaqueToken(sessionToken),
+        revokedAt: null,
+        expiresAt: { gt: now },
+        createdAt: { gte: authenticatedAfter },
+      },
+      select: { id: true },
+    });
+    if (!session) {
+      throw new ForbiddenException({
+        code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
+        message: 'Sign in again before deleting the account.',
+      });
+    }
+  }
+
   async cleanupExpiredSessions(): Promise<number> {
     const result = await this.prisma.authSession.deleteMany({
       where: {
@@ -237,6 +265,7 @@ export class AuthService {
           tokenHash: hashOpaqueToken(sessionToken),
           expiresAt,
           lastUsedAt: now,
+          createdAt: now,
           userAgent: inputLength(metadata.userAgent, 512),
         },
       });

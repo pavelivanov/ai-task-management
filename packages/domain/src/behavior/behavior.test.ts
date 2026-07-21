@@ -114,6 +114,18 @@ describe('waiting suggestions', () => {
     expect(selected.map(({ id }) => id)).toEqual(['c', 'a', 'b']);
   });
 
+  it('orders otherwise-equal candidates by the shortest estimate', () => {
+    const selected = selectWaitingCandidates(
+      [
+        task('ten', { estimateMinutes: 10 }),
+        task('five', { estimateMinutes: 5 }),
+      ],
+      15,
+      false,
+    );
+    expect(selected.map(({ id }) => id)).toEqual(['five', 'ten']);
+  });
+
   it('filters personal, oversized, blocked, and non-optional planned tasks', () => {
     const selected = selectWaitingCandidates(
       [

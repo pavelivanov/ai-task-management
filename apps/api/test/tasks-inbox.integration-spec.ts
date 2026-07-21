@@ -51,7 +51,7 @@ describe('task, project, and inbox boundaries', () => {
       .useValue(clock)
       .compile();
 
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
     await app.init();
     prisma = app.get(PrismaService);

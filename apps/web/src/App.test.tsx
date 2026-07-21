@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -150,5 +151,47 @@ describe('authenticated application routing', () => {
     expect(
       screen.queryByLabelText('Assistant recommendation'),
     ).not.toBeInTheDocument();
+  });
+
+  it('requires exact account deletion confirmations in settings', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/auth/me'))
+          return Promise.resolve(jsonResponse(user));
+        if (url.endsWith('/users/me/preferences')) {
+          return Promise.resolve(
+            jsonResponse({
+              timezone: 'UTC',
+              workdayStart: '09:00',
+              workdayEnd: '17:00',
+              primaryTaskLimit: 1,
+              secondaryTaskLimit: 2,
+              capacityWarningPercent: 10,
+              protectedHoursEnabled: false,
+              protectedHoursStart: null,
+              protectedHoursEnd: null,
+              notificationsEnabled: false,
+              morningPlanningReminder: false,
+              endOfDayReminder: false,
+              aiInterruptionLevel: 'minimal',
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
+
+    renderApp('/settings');
+    const remove = await screen.findByRole('button', {
+      name: 'Permanently delete account',
+    });
+    expect(remove).toBeDisabled();
+
+    const browser = userEvent.setup();
+    await browser.type(screen.getByLabelText('Account email'), user.email);
+    await browser.type(screen.getByLabelText('Type DELETE'), 'DELETE');
+    expect(remove).toBeEnabled();
   });
 });
