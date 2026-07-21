@@ -12,6 +12,7 @@ interface ErrorBody {
   message: string;
   issues?: string[];
   currentSession?: unknown;
+  scheduleAfterWorkAt?: unknown;
 }
 
 function normalizeHttpError(exception: HttpException): ErrorBody {
@@ -28,6 +29,9 @@ function normalizeHttpError(exception: HttpException): ErrorBody {
         ...(candidate.issues ? { issues: candidate.issues } : {}),
         ...(candidate.currentSession
           ? { currentSession: candidate.currentSession }
+          : {}),
+        ...(typeof candidate.scheduleAfterWorkAt === 'string'
+          ? { scheduleAfterWorkAt: candidate.scheduleAfterWorkAt }
           : {}),
       };
     }

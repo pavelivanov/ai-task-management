@@ -52,41 +52,54 @@ export class ReviewsService {
     if (!user) this.throwNotFound();
 
     const { start, end } = localDateBoundsUtc(validatedDate, user.timezone);
-    const [plan, completionEvents, carryoverEvents, interruptionEvents] =
-      await Promise.all([
-        transaction.dailyPlan.findUnique({
-          where: {
-            userId_date: { userId, date: databaseDate(validatedDate) },
-          },
-          select: {
-            items: { select: { taskId: true, role: true } },
-          },
-        }),
-        transaction.taskEvent.findMany({
-          where: {
-            userId,
-            type: 'completed',
-            createdAt: { gte: start, lt: end },
-          },
-          select: { taskId: true },
-        }),
-        transaction.taskEvent.findMany({
-          where: {
-            userId,
-            type: 'carried_over',
-            createdAt: { gte: start, lt: end },
-          },
-          select: { taskId: true, metadata: true },
-        }),
-        transaction.taskEvent.findMany({
-          where: {
-            userId,
-            type: { in: ['paused', 'waiting', 'blocked'] },
-            createdAt: { gte: start, lt: end },
-          },
-          select: { id: true },
-        }),
-      ]);
+    const [
+      plan,
+      completionEvents,
+      carryoverEvents,
+      interruptionEvents,
+      captureEvents,
+    ] = await Promise.all([
+      transaction.dailyPlan.findUnique({
+        where: {
+          userId_date: { userId, date: databaseDate(validatedDate) },
+        },
+        select: {
+          items: { select: { taskId: true, role: true } },
+        },
+      }),
+      transaction.taskEvent.findMany({
+        where: {
+          userId,
+          type: 'completed',
+          createdAt: { gte: start, lt: end },
+        },
+        select: { taskId: true },
+      }),
+      transaction.taskEvent.findMany({
+        where: {
+          userId,
+          type: 'carried_over',
+          createdAt: { gte: start, lt: end },
+        },
+        select: { taskId: true, metadata: true },
+      }),
+      transaction.taskEvent.findMany({
+        where: {
+          userId,
+          type: { in: ['paused', 'waiting', 'blocked'] },
+          createdAt: { gte: start, lt: end },
+        },
+        select: { id: true },
+      }),
+      transaction.taskEvent.findMany({
+        where: {
+          userId,
+          type: 'created',
+          createdAt: { gte: start, lt: end },
+        },
+        select: { metadata: true },
+      }),
+    ]);
 
     const completedTaskIds = new Set(
       completionEvents.map((event) => event.taskId),
@@ -128,6 +141,12 @@ export class ReviewsService {
               focusSessionId: true,
               startedAt: true,
               endedAt: true,
+              focusSession: {
+                select: {
+                  taskId: true,
+                  task: { select: { estimateMinutes: true } },
+                },
+              },
             },
           })
         : [];
@@ -150,6 +169,21 @@ export class ReviewsService {
     const focusSessionIds = new Set(
       focusedSegments.map((segment) => segment.focusSessionId),
     );
+    const estimateByTaskId = new Map<string, number>();
+    for (const segment of focusedSegments) {
+      const estimate = segment.focusSession.task.estimateMinutes;
+      if (estimate !== null) {
+        estimateByTaskId.set(segment.focusSession.taskId, estimate);
+      }
+    }
+    const estimatedFocusMinutes = [...estimateByTaskId.values()].reduce(
+      (total, estimate) => total + estimate,
+      0,
+    );
+    const focusedMinutes = Math.floor(focusedMilliseconds / 60_000);
+    const distractionCount = captureEvents.filter((event) =>
+      this.hasMetadataSource(event.metadata, 'focus_distraction'),
+    ).length;
 
     return transaction.dailyReview.upsert({
       where: {
@@ -161,23 +195,27 @@ export class ReviewsService {
         primaryOutcomeCompleted: [...primaryTaskIds].some((taskId) =>
           completedTaskIds.has(taskId),
         ),
-        focusedMinutes: Math.floor(focusedMilliseconds / 60_000),
+        focusedMinutes,
         completedPlannedTasks,
         completedUnplannedTasks,
         carriedOverTasks: carriedOverTaskIds.size,
         focusSessions: focusSessionIds.size,
-        interruptionCount: interruptionEvents.length,
+        interruptionCount: interruptionEvents.length + distractionCount,
+        estimatedFocusMinutes,
+        estimateVarianceMinutes: focusedMinutes - estimatedFocusMinutes,
       },
       update: {
         primaryOutcomeCompleted: [...primaryTaskIds].some((taskId) =>
           completedTaskIds.has(taskId),
         ),
-        focusedMinutes: Math.floor(focusedMilliseconds / 60_000),
+        focusedMinutes,
         completedPlannedTasks,
         completedUnplannedTasks,
         carriedOverTasks: carriedOverTaskIds.size,
         focusSessions: focusSessionIds.size,
-        interruptionCount: interruptionEvents.length,
+        interruptionCount: interruptionEvents.length + distractionCount,
+        estimatedFocusMinutes,
+        estimateVarianceMinutes: focusedMinutes - estimatedFocusMinutes,
       },
     });
   }
@@ -216,6 +254,18 @@ export class ReviewsService {
       metadata !== null &&
       !Array.isArray(metadata) &&
       metadata.sourcePlanDate === date
+    );
+  }
+
+  private hasMetadataSource(
+    metadata: Prisma.JsonValue,
+    source: string,
+  ): boolean {
+    return (
+      typeof metadata === 'object' &&
+      metadata !== null &&
+      !Array.isArray(metadata) &&
+      metadata.source === source
     );
   }
 

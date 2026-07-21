@@ -5,17 +5,25 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  CaptureFocusDistraction,
   CompleteFocusSession,
   CurrentFocusSession,
+  DailyPlan,
   FocusReason,
   FocusSession,
   FocusSessionStatus,
   StartFocusSession,
   StopFocusSession,
+  Task,
   TaskStatus,
+  WaitForFocusSession,
 } from '@execution/contracts';
 import {
+  evaluateProtectedStart,
   FocusTransitionError,
+  isInsideProtectedHours,
+  localDateForInstant,
+  scheduleAfterProtectedHours,
   transitionFocusSession,
 } from '@execution/domain';
 
@@ -23,8 +31,13 @@ import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { type Clock, CLOCK } from '../auth/clock';
 import { DailyPlansService } from '../daily-plans/daily-plans.service';
+import {
+  databaseDate,
+  formatLocalTime,
+} from '../daily-plans/daily-plan-presenter';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
 import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
+import { TasksService } from '../tasks/tasks.service';
 import {
   type FocusActivationHook,
   FOCUS_ACTIVATION_HOOK,
@@ -47,6 +60,7 @@ interface TransitionOptions {
   reason?: string;
   outcome?: string;
   eventTypeOverride?: 'resumed';
+  expectedWaitMinutes?: number;
 }
 
 @Injectable()
@@ -55,6 +69,7 @@ export class FocusService {
     private readonly prisma: PrismaService,
     private readonly lifecycle: TaskLifecycleService,
     private readonly dailyPlans: DailyPlansService,
+    private readonly tasks: TasksService,
     private readonly invalidations: InvalidationStreamService,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(FOCUS_ACTIVATION_HOOK)
@@ -90,7 +105,7 @@ export class FocusService {
 
         const task = await transaction.task.findFirst({
           where: { id: input.taskId, userId },
-          select: { id: true, status: true },
+          select: { id: true, status: true, category: true, priority: true },
         });
         if (!task) this.throwTaskNotFound();
         if (task.status === 'inbox') {
@@ -103,6 +118,22 @@ export class FocusService {
           throw new ConflictException({
             code: 'FOCUS_TASK_NOT_STARTABLE',
             message: 'Only backlog or planned tasks can start focus.',
+          });
+        }
+
+        const protectedDecision = await this.protectedStartDecision(
+          transaction,
+          userId,
+          task,
+        );
+        if (
+          protectedDecision.confirmationRequired &&
+          !input.protectedHoursOverride
+        ) {
+          throw new ConflictException({
+            code: 'PROTECTED_HOURS_CONFIRMATION_REQUIRED',
+            message: 'This is a personal task during protected work hours.',
+            scheduleAfterWorkAt: protectedDecision.scheduleAfterWorkAt,
           });
         }
 
@@ -170,11 +201,73 @@ export class FocusService {
   wait(
     userId: string,
     sessionId: string,
-    input: FocusReason,
+    input: WaitForFocusSession,
   ): Promise<FocusSession> {
     return this.mutateAndPresent(userId, sessionId, 'waiting', {
       taskStatus: 'waiting',
       ...(input.reason ? { reason: input.reason } : {}),
+      expectedWaitMinutes: input.expectedWaitMinutes,
+    });
+  }
+
+  async scheduleAfterProtectedHours(
+    userId: string,
+    taskId: string,
+  ): Promise<DailyPlan> {
+    const preferences = await this.prisma.userPreferences.findUnique({
+      where: { userId },
+      include: { user: { select: { timezone: true } } },
+    });
+    if (!preferences || !preferences.protectedHoursEnabled) {
+      throw new ConflictException({
+        code: 'PROTECTED_HOURS_DISABLED',
+        message: 'Protected hours are not enabled.',
+      });
+    }
+    const plannedStart = scheduleAfterProtectedHours({
+      now: this.clock.now(),
+      timeZone: preferences.user.timezone,
+      enabled: true,
+      start: preferences.protectedHoursStart
+        ? formatLocalTime(preferences.protectedHoursStart)
+        : null,
+      end: preferences.protectedHoursEnd
+        ? formatLocalTime(preferences.protectedHoursEnd)
+        : null,
+    });
+    return this.dailyPlans.scheduleTaskAfterProtectedHours(
+      userId,
+      taskId,
+      plannedStart,
+    );
+  }
+
+  async captureDistraction(
+    userId: string,
+    sessionId: string,
+    input: CaptureFocusDistraction,
+  ): Promise<Task> {
+    return this.prisma.$transaction(async (transaction) => {
+      const session = await transaction.focusSession.findFirst({
+        where: {
+          id: sessionId,
+          userId,
+          status: { in: ['active', 'paused', 'waiting', 'blocked'] },
+        },
+        select: { id: true },
+      });
+      if (!session) this.throwSessionNotFound();
+      return this.tasks.createInTransaction(
+        transaction,
+        userId,
+        {
+          title: input.title,
+          category: 'work',
+          priority: 'normal',
+        },
+        'inbox',
+        { source: 'focus_distraction', focusSessionId: session.id },
+      );
     });
   }
 
@@ -253,6 +346,7 @@ export class FocusService {
       where: { id: sessionId, userId },
       include: {
         segments: { orderBy: { sequence: 'desc' }, take: 1 },
+        task: { select: { status: true } },
       },
     });
     if (!session) this.throwSessionNotFound();
@@ -284,6 +378,9 @@ export class FocusService {
         endedAt: transition.terminal ? now : null,
         ...(options.outcome ? { outcome: options.outcome } : {}),
         ...(options.reason ? { interruptionReason: options.reason } : {}),
+        ...(target === 'waiting'
+          ? { expectedWaitMinutes: options.expectedWaitMinutes ?? 5 }
+          : {}),
       },
     });
     if (update.count !== 1) {
@@ -315,16 +412,18 @@ export class FocusService {
       });
     }
 
-    await this.lifecycle.transitionInTransaction(transaction, {
-      taskId: session.taskId,
-      userId,
-      to: options.taskStatus,
-      metadata: { focusSessionId: session.id },
-      ...(options.reason ? { reason: options.reason } : {}),
-      ...(options.eventTypeOverride
-        ? { eventTypeOverride: options.eventTypeOverride }
-        : {}),
-    });
+    if (session.task.status !== options.taskStatus) {
+      await this.lifecycle.transitionInTransaction(transaction, {
+        taskId: session.taskId,
+        userId,
+        to: options.taskStatus,
+        metadata: { focusSessionId: session.id },
+        ...(options.reason ? { reason: options.reason } : {}),
+        ...(options.eventTypeOverride
+          ? { eventTypeOverride: options.eventTypeOverride }
+          : {}),
+      });
+    }
     const planChanged =
       target === 'completed'
         ? await this.dailyPlans.markTaskCompletedInTransaction(
@@ -357,6 +456,70 @@ export class FocusService {
       }
     }
     return session;
+  }
+
+  private async protectedStartDecision(
+    transaction: Transaction,
+    userId: string,
+    task: {
+      id: string;
+      category: 'work' | 'personal';
+      priority: 'low' | 'normal' | 'high' | 'critical';
+    },
+  ): Promise<{
+    confirmationRequired: boolean;
+    scheduleAfterWorkAt: string | null;
+  }> {
+    const preferences = await transaction.userPreferences.findUnique({
+      where: { userId },
+      include: { user: { select: { timezone: true } } },
+    });
+    if (!preferences)
+      return { confirmationRequired: false, scheduleAfterWorkAt: null };
+    const now = this.clock.now();
+    const start = preferences.protectedHoursStart
+      ? formatLocalTime(preferences.protectedHoursStart)
+      : null;
+    const end = preferences.protectedHoursEnd
+      ? formatLocalTime(preferences.protectedHoursEnd)
+      : null;
+    const localDate = localDateForInstant(now, preferences.user.timezone);
+    const plannedItem = await transaction.dailyPlanItem.findFirst({
+      where: {
+        taskId: task.id,
+        plannedStart: { not: null },
+        dailyPlan: { userId, date: databaseDate(localDate) },
+      },
+      select: { plannedStart: true },
+    });
+    const plannedPersonalAdmin =
+      plannedItem?.plannedStart !== null &&
+      plannedItem?.plannedStart !== undefined &&
+      isInsideProtectedHours({
+        now: plannedItem.plannedStart,
+        timeZone: preferences.user.timezone,
+        enabled: preferences.protectedHoursEnabled,
+        start,
+        end,
+      });
+    const hours = {
+      now,
+      timeZone: preferences.user.timezone,
+      enabled: preferences.protectedHoursEnabled,
+      start,
+      end,
+    };
+    const decision = evaluateProtectedStart(hours, {
+      category: task.category,
+      priority: task.priority,
+      plannedPersonalAdmin,
+    });
+    return {
+      confirmationRequired: decision.confirmationRequired,
+      scheduleAfterWorkAt: decision.confirmationRequired
+        ? scheduleAfterProtectedHours(hours).toISOString()
+        : null,
+    };
   }
 
   private async present(

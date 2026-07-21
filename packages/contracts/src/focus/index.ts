@@ -33,6 +33,7 @@ export const focusSessionSchema = z.object({
   initialIntent: z.string().nullable(),
   outcome: z.string().nullable(),
   interruptionReason: z.string().nullable(),
+  expectedWaitMinutes: z.number().int().min(5).nullable(),
   focusedDurationSeconds: z.number().int().nonnegative(),
   activeSegmentStartedAt: z.iso.datetime({ offset: true }).nullable(),
   serverNow: z.iso.datetime({ offset: true }),
@@ -46,11 +47,27 @@ export const startFocusSessionSchema = z
   .object({
     taskId: z.uuid(),
     initialIntent: focusTextSchema.optional(),
+    protectedHoursOverride: z.boolean().default(false),
   })
   .strict();
 
 export const focusReasonSchema = z
   .object({ reason: focusTextSchema.optional() })
+  .strict();
+
+export const waitForFocusSessionSchema = z
+  .object({
+    reason: focusTextSchema.optional(),
+    expectedWaitMinutes: z.number().int().min(5).max(1_440).default(5),
+  })
+  .strict();
+
+export const scheduleAfterProtectedHoursSchema = z
+  .object({ taskId: z.uuid() })
+  .strict();
+
+export const captureFocusDistractionSchema = z
+  .object({ title: z.string().trim().min(1).max(240) })
   .strict();
 
 export const resumeFocusSessionSchema = z.object({}).strict();
@@ -72,6 +89,7 @@ export const invalidationEventTypeSchema = z.enum([
   'focus.changed',
   'plan.changed',
   'suggestion.changed',
+  'notification.changed',
 ]);
 
 export const invalidationEventSchema = z.object({
@@ -89,6 +107,13 @@ export type FocusSession = z.infer<typeof focusSessionSchema>;
 export type CurrentFocusSession = z.infer<typeof currentFocusSessionSchema>;
 export type StartFocusSession = z.output<typeof startFocusSessionSchema>;
 export type FocusReason = z.output<typeof focusReasonSchema>;
+export type WaitForFocusSession = z.output<typeof waitForFocusSessionSchema>;
+export type ScheduleAfterProtectedHours = z.output<
+  typeof scheduleAfterProtectedHoursSchema
+>;
+export type CaptureFocusDistraction = z.output<
+  typeof captureFocusDistractionSchema
+>;
 export type ResumeFocusSession = z.output<typeof resumeFocusSessionSchema>;
 export type CompleteFocusSession = z.output<typeof completeFocusSessionSchema>;
 export type StopFocusSession = z.output<typeof stopFocusSessionSchema>;

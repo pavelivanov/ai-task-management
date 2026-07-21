@@ -1,11 +1,18 @@
 import { timeZoneSchema, type UserPreferences } from '@execution/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   getPreferences,
   updatePreferences,
 } from '../features/settings/settings-api';
+import {
+  browserPushState,
+  detectBrowserPushState,
+  disableBrowserPush,
+  enableBrowserPush,
+  type BrowserPushState,
+} from '../features/behavior/push-registration';
 import { ErrorState, LoadingState } from '../features/ui/AsyncState';
 import { isApiError } from '../lib/api-client';
 import { queryKeys } from '../lib/query-client';
@@ -41,6 +48,10 @@ function SettingsForm({
   const queryClient = useQueryClient();
   const [form, setForm] = useState(initial);
   const [message, setMessage] = useState<string | null>(null);
+  const [pushState, setPushState] = useState<BrowserPushState>(() =>
+    browserPushState(),
+  );
+  const [pushPending, setPushPending] = useState(false);
   const save = useMutation({
     mutationFn: () => updatePreferences(form),
     onSuccess: (data) => {
@@ -55,6 +66,50 @@ function SettingsForm({
       ),
   });
   const timezoneValid = timeZoneSchema.safeParse(form.timezone).success;
+  const notificationBenefitSelected =
+    form.notificationsEnabled &&
+    (form.morningPlanningReminder || form.endOfDayReminder);
+
+  useEffect(() => {
+    void detectBrowserPushState().then(setPushState);
+  }, []);
+
+  const enablePush = async () => {
+    setPushPending(true);
+    try {
+      await save.mutateAsync();
+      const state = await enableBrowserPush();
+      setPushState(state);
+      setMessage(
+        state === 'subscribed'
+          ? 'Browser alerts are enabled for the benefits selected above.'
+          : state === 'denied'
+            ? 'Browser permission was denied. Reminders remain available in the app.'
+            : state === 'unsupported'
+              ? 'This browser cannot register push alerts. In-app reminders still work.'
+              : 'Permission was not granted. In-app reminders still work.',
+      );
+    } catch {
+      setMessage(
+        'Browser alerts could not be registered. In-app reminders still work.',
+      );
+    } finally {
+      setPushPending(false);
+    }
+  };
+
+  const disablePush = async () => {
+    setPushPending(true);
+    try {
+      await disableBrowserPush();
+      setPushState('default');
+      setMessage(
+        'Browser alerts are off. In-app reminder history is unchanged.',
+      );
+    } finally {
+      setPushPending(false);
+    }
+  };
 
   return (
     <div className="page settings-page">
@@ -198,8 +253,8 @@ function SettingsForm({
             Reserve a protected focus window
           </label>
           <p className="field-note">
-            This records your preference today. Automatic enforcement arrives in
-            a later plan.
+            Personal tasks require confirmation inside this window. Work and
+            planned personal-admin blocks remain available.
           </p>
           {form.protectedHoursEnabled && (
             <div className="form-grid form-grid--small">
@@ -273,6 +328,36 @@ function SettingsForm({
               <option value="proactive">Proactive</option>
             </select>
           </label>
+          {notificationBenefitSelected && (
+            <div className="notification-permission-panel">
+              <div>
+                <strong>Browser alerts for selected reminders</strong>
+                <p className="field-note">
+                  Permission is requested only when you press Enable. Denial
+                  does not remove the in-app notification center.
+                </p>
+              </div>
+              {pushState === 'subscribed' ? (
+                <button
+                  className="button button--quiet"
+                  disabled={pushPending}
+                  onClick={() => void disablePush()}
+                  type="button"
+                >
+                  Disable browser alerts
+                </button>
+              ) : (
+                <button
+                  className="button"
+                  disabled={pushPending || pushState === 'unsupported'}
+                  onClick={() => void enablePush()}
+                  type="button"
+                >
+                  Enable browser alerts
+                </button>
+              )}
+            </div>
+          )}
         </fieldset>
 
         {message && (

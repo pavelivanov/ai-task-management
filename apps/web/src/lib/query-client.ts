@@ -28,6 +28,10 @@ export const queryKeys = {
     ['private', userId, 'tasks', filters] as const,
   projects: (userId: string) => ['private', userId, 'projects'] as const,
   preferences: (userId: string) => ['private', userId, 'preferences'] as const,
+  notifications: (userId: string) =>
+    ['private', userId, 'notifications'] as const,
+  waitingSuggestions: (userId: string, sessionId: string) =>
+    ['private', userId, 'waiting-suggestions', sessionId] as const,
   review: (userId: string, date: string) =>
     ['private', userId, 'review', date] as const,
   assistantSuggestion: (userId: string, suggestionId: string) =>

@@ -328,6 +328,120 @@ button:disabled {
   }
 }
 
+.notification-permission-panel,
+.notification-row,
+.waiting-suggestions,
+.estimate-reflection {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 92%, var(--accent) 8%);
+}
+
+.notification-permission-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.notification-permission-panel p {
+  margin: 0.35rem 0 0;
+}
+
+.notification-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.notification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.15rem;
+  opacity: 0.72;
+}
+
+.notification-row--unread {
+  border-left: 4px solid var(--accent);
+  opacity: 1;
+}
+
+.notification-row h2,
+.notification-row p {
+  margin: 0.25rem 0;
+}
+
+.notification-actions,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.waiting-suggestions {
+  margin: 1rem auto 2rem;
+  max-width: 58rem;
+  padding: 1.25rem;
+}
+
+.waiting-suggestions h2,
+.waiting-suggestions p {
+  margin: 0.25rem 0;
+}
+
+.waiting-candidate-list {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.waiting-candidate-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.waiting-candidate-list span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.estimate-reflection {
+  margin: 0 0 2rem;
+  padding: 1rem;
+}
+
+.protected-hours-dialog {
+  max-width: 34rem;
+}
+
+.protected-hours-dialog > p {
+  margin: 0;
+  padding: 1.25rem 1.3rem 0;
+  line-height: 1.5;
+}
+
+.protected-hours-dialog .dialog-actions {
+  padding: 1.25rem 1.3rem 1.3rem;
+}
+
+@media (max-width: 720px) {
+  .notification-permission-panel,
+  .notification-row,
+  .waiting-candidate-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .assistant-ledger {
     animation: none;

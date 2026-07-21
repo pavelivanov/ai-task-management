@@ -161,6 +161,7 @@ test('@a11y core screens have no serious or critical axe violations', async ({
     '/inbox',
     '/backlog',
     '/review',
+    '/notifications',
     '/settings',
   ];
   for (const route of routes) {

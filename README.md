@@ -6,7 +6,7 @@ user-scoped task and inbox workflows, timezone-aware daily planning, soft
 capacity warnings, explicit carryover, segment-based focus tracking,
 deterministic daily reviews, lightweight projects, and append-only task
 history. A responsive React workspace exposes Today, Focus, Inbox, Backlog,
-Review, and Settings without requiring an LLM key.
+Review, Notifications, and Settings without requiring an LLM key.
 
 ## Prerequisites
 
@@ -70,6 +70,29 @@ Daily reviews are generated from authoritative plan items, task events, and
 focus segments when a day closes or through the explicit review-generation
 endpoint. Regeneration preserves the user's reflection and never assigns a
 productivity score.
+
+Proactive support is deterministic: the API evaluates bounded planning,
+waiting, carryover, estimate, deadline, and review triggers with durable dedupe
+keys and an auditable outcome. Interruption level and reminder preferences gate
+delivery. Protected work hours filter personal work from automatic suggestions
+and show a warning—not a prohibition—before an explicit start. Waiting sessions
+can surface at most three stable, eligible short-task choices.
+
+The in-app notification center is always available at `/notifications` when a
+signal is recorded. Browser push is opt-in and requested only after the user
+selects a specific notification benefit in Settings. Set `PUSH_PROVIDER` to
+`web-push` and supply `VAPID_SUBJECT`, `VAPID_PUBLIC_KEY`, and
+`VAPID_PRIVATE_KEY` through deployment secrets to enable production delivery;
+`disabled` is the safe default and `fake` is reserved for non-production tests.
+The notification worker sends a content-minimized payload and treats expired
+subscriptions as revoked. Subscription keys, VAPID private material, and task
+bodies must never be logged.
+
+Production hosting must serve the web app and `/sw.js` from a secure context
+(HTTPS) with the intended service-worker scope. Permission denial only disables
+browser delivery; it does not disable the in-app center. Changing timezone or
+notification preferences clears pending deliveries so the scheduler can
+recompute them from current settings.
 
 Bounded assistant proposals are available for task extraction, daily planning,
 task decomposition, carryover diagnosis, and outcome summaries. Every proposal

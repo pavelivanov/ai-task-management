@@ -7,6 +7,7 @@ import {
   usePrivateCacheBoundary,
 } from '../features/auth/auth';
 import { RealtimeSync } from '../features/realtime/RealtimeSync';
+import { disableBrowserPush } from '../features/behavior/push-registration';
 import { LoadingState } from '../features/ui/AsyncState';
 import { useUiStore } from '../features/ui/ui-store';
 import { isApiError } from '../lib/api-client';
@@ -17,6 +18,7 @@ const navigation = [
   { to: '/inbox', label: 'Inbox', mark: 'I' },
   { to: '/backlog', label: 'Backlog', mark: 'B' },
   { to: '/review', label: 'Review', mark: 'R' },
+  { to: '/notifications', label: 'Notifications', mark: 'N' },
   { to: '/settings', label: 'Settings', mark: 'S' },
 ];
 
@@ -28,7 +30,10 @@ export function AuthenticatedLayout() {
   const mobileNavOpen = useUiStore((state) => state.mobileNavOpen);
   const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen);
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      await disableBrowserPush().catch(() => undefined);
+      await logout();
+    },
     onSuccess: () => {
       queryClient.clear();
       navigate('/login', { replace: true });

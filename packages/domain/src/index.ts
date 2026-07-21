@@ -1,3 +1,4 @@
+export * from './behavior/index.js';
 export * from './daily-plans/index.js';
 export * from './focus/index.js';
 export * from './reviews/index.js';

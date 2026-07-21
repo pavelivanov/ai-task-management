@@ -33,9 +33,9 @@ export class FocusTransitionError extends Error {
 
 const transitionTargets = {
   active: ['paused', 'waiting', 'blocked', 'completed', 'stopped'],
-  paused: ['active'],
-  waiting: ['active'],
-  blocked: ['active'],
+  paused: ['active', 'stopped'],
+  waiting: ['active', 'stopped'],
+  blocked: ['active', 'stopped'],
   completed: [],
   stopped: [],
 } as const satisfies Record<FocusSessionStatus, readonly FocusSessionStatus[]>;

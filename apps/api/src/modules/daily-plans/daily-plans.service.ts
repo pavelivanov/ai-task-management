@@ -267,6 +267,31 @@ export class DailyPlansService {
     return this.presentAndPublish(userId, planId);
   }
 
+  async scheduleTaskAfterProtectedHours(
+    userId: string,
+    taskId: string,
+    plannedStart: Date,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const existing = await this.prisma.dailyPlan.findUnique({
+      where: { userId_date: { userId, date: databaseDate(date) } },
+      include: { items: { where: { taskId }, select: { id: true } } },
+    });
+    const existingItem = existing?.items[0];
+    if (existing && existingItem) {
+      return this.updateTodayItem(userId, existingItem.id, {
+        expectedPlanVersion: existing.version,
+        plannedStart: plannedStart.toISOString(),
+        role: 'optional',
+      });
+    }
+    return this.scheduleTask(userId, taskId, {
+      role: 'optional',
+      plannedStart: plannedStart.toISOString(),
+    });
+  }
+
   async updateTodayItem(
     userId: string,
     itemId: string,

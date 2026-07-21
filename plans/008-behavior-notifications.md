@@ -13,6 +13,7 @@
 - **Priority**: P1
 - **Effort**: L
 - **Risk**: MED — timezone/DST, duplicate jobs, and push permission are fragile
+- **Status**: DONE
 - **Depends on**: `plans/006-deterministic-web-review.md`,
   `plans/007-ai-suggestions-evals.md`
 - **Category**: direction / correctness / UX
@@ -173,15 +174,15 @@ for multiple segments while preserving the existing deterministic metrics.
 
 ## Done criteria
 
-- [ ] Trigger timing/eligibility is deterministic and auditable.
-- [ ] No user receives duplicate notification for the same dedupe window.
-- [ ] Protected hours warn/filter but preserve explicit user override.
-- [ ] Waiting suggestions contain at most three deterministically eligible tasks.
-- [ ] Push permission is contextual; denial leaves the app functional.
-- [ ] Subscription secrets/task content are absent from logs.
-- [ ] No idle surveillance, Redis, or generic motivational spam was added.
-- [ ] Full verification and behavior E2E pass.
-- [ ] `plans/README.md` status row is updated.
+- [x] Trigger timing/eligibility is deterministic and auditable.
+- [x] No user receives duplicate notification for the same dedupe window.
+- [x] Protected hours warn/filter but preserve explicit user override.
+- [x] Waiting suggestions contain at most three deterministically eligible tasks.
+- [x] Push permission is contextual; denial leaves the app functional.
+- [x] Subscription secrets/task content are absent from logs.
+- [x] No idle surveillance, Redis, or generic motivational spam was added.
+- [x] Full verification and behavior E2E pass.
+- [x] `plans/README.md` status row is updated.
 
 ## STOP conditions
 

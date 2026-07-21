@@ -172,7 +172,23 @@ function ReviewContent({
           <dt>Interruptions</dt>
           <dd>{review.interruptionCount}</dd>
         </div>
+        <div>
+          <dt>Estimated focus</dt>
+          <dd>{formatMinutes(review.estimatedFocusMinutes)}</dd>
+        </div>
       </dl>
+
+      {review.estimatedFocusMinutes > 0 && (
+        <p className="estimate-reflection">
+          Actual focused time was{' '}
+          {review.estimateVarianceMinutes === 0
+            ? 'equal to the recorded estimates.'
+            : `${formatMinutes(Math.abs(review.estimateVarianceMinutes))} ${
+                review.estimateVarianceMinutes > 0 ? 'over' : 'under'
+              } the recorded estimates.`}{' '}
+          This is a factual comparison; future estimates are unchanged.
+        </p>
+      )}
 
       <section className="reflection-panel" aria-labelledby="reflection-title">
         <div>

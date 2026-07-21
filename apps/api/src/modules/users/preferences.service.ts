@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import {
 } from '@execution/contracts';
 
 import { PrismaService } from '../../database/prisma.service';
+import { type Clock, CLOCK } from '../auth/clock';
 
 function formatLocalTime(value: Date): string {
   const hours = value.getUTCHours().toString().padStart(2, '0');
@@ -65,7 +67,10 @@ function toContract(preferences: StoredPreferences): UserPreferences {
 
 @Injectable()
 export class PreferencesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CLOCK) private readonly clock: Clock,
+  ) {}
 
   async getForUser(userId: string): Promise<UserPreferences> {
     const preferences = await this.prisma.userPreferences.findUnique({
@@ -124,6 +129,13 @@ export class PreferencesService {
           morningPlanningReminder: next.morningPlanningReminder,
           endOfDayReminder: next.endOfDayReminder,
           aiInterruptionLevel: next.aiInterruptionLevel,
+        },
+      }),
+      this.prisma.notification.deleteMany({
+        where: {
+          userId,
+          scheduledAt: { gt: this.clock.now() },
+          deliveryStatus: { in: ['pending', 'retry'] },
         },
       }),
     ]);

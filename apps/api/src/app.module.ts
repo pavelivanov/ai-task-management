@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AppConfigModule } from './config/app-config.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
+import { BehaviorModule } from './modules/behavior/behavior.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DailyPlansModule } from './modules/daily-plans/daily-plans.module';
 import { FocusModule } from './modules/focus/focus.module';
@@ -17,6 +18,7 @@ import { UsersModule } from './modules/users/users.module';
   imports: [
     AppConfigModule,
     AssistantModule,
+    BehaviorModule,
     AuthModule,
     DailyPlansModule,
     FocusModule,

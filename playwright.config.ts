@@ -50,6 +50,10 @@ export default defineConfig({
         SSE_HEARTBEAT_SECONDS: '1',
         ASSISTANT_PROVIDER: 'fake',
         ASSISTANT_WORKER_INTERVAL_MS: '200',
+        BEHAVIOR_SCHEDULER_INTERVAL_MS: '200',
+        NOTIFICATION_WORKER_INTERVAL_MS: '200',
+        PUSH_PROVIDER: 'fake',
+        WAITING_SUGGESTION_MINUTES: '0',
       },
     },
     {
