@@ -49,7 +49,7 @@ STOP conditions, and update its status here.
 | 005 | Enforce focus-session invariants and reliable time tracking | P0 | L | 003, 004 | DONE |
 | 006 | Build reviews and the deterministic web execution loop | P0 | XL | 004, 005 | DONE |
 | 007 | Add bounded AI suggestions, confirmations, and evaluations | P1 | XL | 006 | DONE |
-| 008 | Add proactive behavior support and browser notifications | P1 | L | 006, 007 | TODO |
+| 008 | Add proactive behavior support and browser notifications | P1 | L | 006, 007 | DONE |
 | 009 | Harden privacy, operations, deployment, and pilot readiness | P1 | L | 001–008 | TODO |
 
 Effort is relative: M is roughly 1–2 focused days, L is several days, and XL

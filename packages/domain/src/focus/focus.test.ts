@@ -59,6 +59,16 @@ describe('focus transitions', () => {
       });
     },
   );
+
+  it.each(['paused', 'waiting', 'blocked'] as const)(
+    'allows %s sessions to stop without resuming',
+    (from) => {
+      expect(transitionFocusSession(from, 'stopped')).toMatchObject({
+        terminal: true,
+        openSegmentType: null,
+      });
+    },
+  );
 });
 
 describe('focus duration', () => {

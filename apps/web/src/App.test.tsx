@@ -125,6 +125,8 @@ describe('authenticated application routing', () => {
               carriedOverTasks: 1,
               focusSessions: 2,
               interruptionCount: 3,
+              estimatedFocusMinutes: 70,
+              estimateVarianceMinutes: 14,
               userReflection: null,
               assistantSummary: null,
               createdAt: '2026-07-20T18:00:00.000Z',
@@ -142,6 +144,9 @@ describe('authenticated application routing', () => {
       await screen.findByText('Completed as planned.'),
     ).toBeInTheDocument();
     expect(screen.getByText('1h 24m')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Actual focused time was 14m over/),
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText('Assistant recommendation'),
     ).not.toBeInTheDocument();

@@ -53,6 +53,7 @@ export class TasksService {
     userId: string,
     input: CreateTask,
     status: TaskStatus = 'backlog',
+    creationMetadata: Prisma.InputJsonObject = {},
   ): Promise<Task> {
     const normalized = this.normalizeCreateInput(input);
     await this.validateAssociations(
@@ -85,7 +86,7 @@ export class TasksService {
         taskId: task.id,
         taskVersion: task.version,
         type: 'created',
-        metadata: { status },
+        metadata: { status, ...creationMetadata },
         createdAt: now,
       },
     });

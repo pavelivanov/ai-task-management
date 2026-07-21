@@ -82,6 +82,34 @@ const environmentSchema = z
       .min(5)
       .max(300)
       .default(30),
+    BEHAVIOR_SCHEDULER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(300_000)
+      .default(60_000),
+    NOTIFICATION_WORKER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(60_000)
+      .default(1_000),
+    NOTIFICATION_LEASE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(5)
+      .max(300)
+      .default(30),
+    WAITING_SUGGESTION_MINUTES: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(120)
+      .default(5),
+    PUSH_PROVIDER: z.enum(['disabled', 'fake', 'web-push']).default('disabled'),
+    VAPID_SUBJECT: z.string().min(1).max(320).optional(),
+    VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(1).optional(),
   })
   .transform((value, context) => {
     const allowedCallbackUrls = value.AUTH_ALLOWED_CALLBACK_URLS.split(',')
@@ -137,6 +165,37 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
+    if (
+      value.PUSH_PROVIDER === 'web-push' &&
+      (!value.VAPID_SUBJECT ||
+        !value.VAPID_PUBLIC_KEY ||
+        !value.VAPID_PRIVATE_KEY)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'VAPID subject, public key, and private key are required for web-push.',
+        path: ['PUSH_PROVIDER'],
+      });
+      return z.NEVER;
+    }
+    if (value.NODE_ENV === 'production' && value.PUSH_PROVIDER === 'fake') {
+      context.addIssue({
+        code: 'custom',
+        message: 'The fake push provider cannot run in production.',
+        path: ['PUSH_PROVIDER'],
+      });
+      return z.NEVER;
+    }
+    if (value.NODE_ENV !== 'test' && value.WAITING_SUGGESTION_MINUTES < 5) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Waiting suggestions require at least five minutes outside tests.',
+        path: ['WAITING_SUGGESTION_MINUTES'],
+      });
+      return z.NEVER;
+    }
 
     return {
       nodeEnvironment: value.NODE_ENV,
@@ -167,6 +226,14 @@ const environmentSchema = z
       assistantRetentionDays: value.ASSISTANT_RETENTION_DAYS,
       assistantWorkerIntervalMs: value.ASSISTANT_WORKER_INTERVAL_MS,
       assistantLeaseSeconds: value.ASSISTANT_LEASE_SECONDS,
+      behaviorSchedulerIntervalMs: value.BEHAVIOR_SCHEDULER_INTERVAL_MS,
+      notificationWorkerIntervalMs: value.NOTIFICATION_WORKER_INTERVAL_MS,
+      notificationLeaseSeconds: value.NOTIFICATION_LEASE_SECONDS,
+      waitingSuggestionMinutes: value.WAITING_SUGGESTION_MINUTES,
+      pushProvider: value.PUSH_PROVIDER,
+      vapidSubject: value.VAPID_SUBJECT,
+      vapidPublicKey: value.VAPID_PUBLIC_KEY,
+      vapidPrivateKey: value.VAPID_PRIVATE_KEY,
     };
   });
 
@@ -202,6 +269,14 @@ export class AppConfig {
   readonly assistantRetentionDays!: number;
   readonly assistantWorkerIntervalMs!: number;
   readonly assistantLeaseSeconds!: number;
+  readonly behaviorSchedulerIntervalMs!: number;
+  readonly notificationWorkerIntervalMs!: number;
+  readonly notificationLeaseSeconds!: number;
+  readonly waitingSuggestionMinutes!: number;
+  readonly pushProvider!: 'disabled' | 'fake' | 'web-push';
+  readonly vapidSubject!: string | undefined;
+  readonly vapidPublicKey!: string | undefined;
+  readonly vapidPrivateKey!: string | undefined;
 
   constructor(
     @Optional()

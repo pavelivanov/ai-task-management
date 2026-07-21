@@ -1,14 +1,20 @@
 import type { FocusCommand } from '../features/focus/focus-api';
+import type { Task } from '@execution/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import { commandFocus, getCurrentFocus } from '../features/focus/focus-api';
+import {
+  captureFocusDistraction,
+  commandFocus,
+  getCurrentFocus,
+  startFocus,
+} from '../features/focus/focus-api';
+import { getWaitingSuggestions } from '../features/behavior/behavior-api';
 import {
   formatElapsed,
   useElapsedFocusSeconds,
 } from '../features/focus/use-elapsed-focus';
-import { captureInbox } from '../features/inbox/inbox-api';
 import { ErrorState, LoadingState } from '../features/ui/AsyncState';
 import { isApiError } from '../lib/api-client';
 import { queryKeys } from '../lib/query-client';
@@ -20,10 +26,21 @@ export function FocusPage() {
   const [reason, setReason] = useState('');
   const [outcome, setOutcome] = useState('');
   const [distraction, setDistraction] = useState('');
+  const [expectedWaitMinutes, setExpectedWaitMinutes] = useState(15);
   const [message, setMessage] = useState<string | null>(null);
   const focus = useQuery({
     queryKey: queryKeys.focus(user.id),
     queryFn: getCurrentFocus,
+  });
+  const waitingSuggestions = useQuery({
+    queryKey: queryKeys.waitingSuggestions(
+      user.id,
+      focus.data?.id ?? 'unavailable',
+    ),
+    queryFn: getWaitingSuggestions,
+    enabled: focus.data?.status === 'waiting',
+    retry: false,
+    refetchInterval: focus.data?.status === 'waiting' ? 15_000 : false,
   });
   const resync = async () => {
     await Promise.all([
@@ -62,13 +79,40 @@ export function FocusPage() {
     },
   });
   const capture = useMutation({
-    mutationFn: captureInbox,
+    mutationFn: (title: string) => {
+      if (!focus.data) throw new Error('Focus session unavailable.');
+      return captureFocusDistraction(focus.data.id, title);
+    },
     onSuccess: async () => {
       setDistraction('');
       setMessage('Distraction captured. Stay with the current work.');
       await queryClient.invalidateQueries({
         queryKey: queryKeys.inbox(user.id),
       });
+    },
+  });
+  const startWaitingTask = useMutation({
+    mutationFn: async (task: Task) => {
+      if (!focus.data) throw new Error('Focus session unavailable.');
+      await commandFocus(focus.data.id, 'stop', {
+        taskStatus: 'waiting',
+        reason: 'Started a short task during the expected wait.',
+      });
+      return startFocus({
+        taskId: task.id,
+        initialIntent: task.description ?? task.title,
+      });
+    },
+    onSuccess: async (session) => {
+      queryClient.setQueryData(queryKeys.focus(user.id), session);
+      setMessage('Short task started. The waiting task remains waiting.');
+      await resync();
+    },
+    onError: async (error) => {
+      setMessage(
+        isApiError(error) ? error.message : 'The short task could not start.',
+      );
+      await resync();
     },
   });
 
@@ -93,27 +137,37 @@ export function FocusPage() {
   }
 
   return (
-    <FocusSessionView
-      captureDistraction={(title) =>
-        capture.mutate({ title, category: 'work', priority: 'normal' })
-      }
-      command={(nextCommand, body) =>
-        command.mutate({
-          command: nextCommand,
-          ...(body ? { body } : {}),
-        })
-      }
-      distraction={distraction}
-      isPending={command.isPending || capture.isPending}
-      key={`${focus.data.id}:${focus.data.serverNow}:${focus.data.version}`}
-      message={message}
-      outcome={outcome}
-      reason={reason}
-      session={focus.data}
-      setDistraction={setDistraction}
-      setOutcome={setOutcome}
-      setReason={setReason}
-    />
+    <>
+      <FocusSessionView
+        captureDistraction={(title) => capture.mutate(title)}
+        command={(nextCommand, body) =>
+          command.mutate({
+            command: nextCommand,
+            ...(body ? { body } : {}),
+          })
+        }
+        distraction={distraction}
+        expectedWaitMinutes={expectedWaitMinutes}
+        isPending={command.isPending || capture.isPending}
+        key={`${focus.data.id}:${focus.data.serverNow}:${focus.data.version}`}
+        message={message}
+        outcome={outcome}
+        reason={reason}
+        session={focus.data}
+        setDistraction={setDistraction}
+        setExpectedWaitMinutes={setExpectedWaitMinutes}
+        setOutcome={setOutcome}
+        setReason={setReason}
+      />
+      {focus.data.status === 'waiting' && waitingSuggestions.data && (
+        <WaitingSuggestionsPanel
+          pending={startWaitingTask.isPending}
+          start={(task) => startWaitingTask.mutate(task)}
+          tasks={waitingSuggestions.data.tasks}
+          waitMinutes={waitingSuggestions.data.expectedWaitMinutes}
+        />
+      )}
+    </>
   );
 }
 
@@ -121,24 +175,28 @@ function FocusSessionView({
   captureDistraction,
   command,
   distraction,
+  expectedWaitMinutes,
   isPending,
   message,
   outcome,
   reason,
   session,
   setDistraction,
+  setExpectedWaitMinutes,
   setOutcome,
   setReason,
 }: {
   captureDistraction(title: string): void;
   command(command: FocusCommand, body?: Record<string, unknown>): void;
   distraction: string;
+  expectedWaitMinutes: number;
   isPending: boolean;
   message: string | null;
   outcome: string;
   reason: string;
   session: NonNullable<Awaited<ReturnType<typeof getCurrentFocus>>>;
   setDistraction(value: string): void;
+  setExpectedWaitMinutes(value: number): void;
   setOutcome(value: string): void;
   setReason(value: string): void;
 }) {
@@ -203,7 +261,12 @@ function FocusSessionView({
           <button
             className="button button--quiet"
             disabled={isPending}
-            onClick={() => command('wait', reason ? { reason } : {})}
+            onClick={() =>
+              command('wait', {
+                ...(reason ? { reason } : {}),
+                expectedWaitMinutes,
+              })
+            }
             type="button"
           >
             Waiting
@@ -224,6 +287,19 @@ function FocusSessionView({
             name="focusReason"
             onChange={(event) => setReason(event.target.value)}
             value={reason}
+          />
+        </label>
+        <label className="focus-reason">
+          Expected wait (minutes)
+          <input
+            max={1440}
+            min={5}
+            name="expectedWaitMinutes"
+            onChange={(event) =>
+              setExpectedWaitMinutes(Math.max(5, Number(event.target.value)))
+            }
+            type="number"
+            value={expectedWaitMinutes}
           />
         </label>
 
@@ -288,5 +364,57 @@ function FocusSessionView({
         </form>
       </aside>
     </div>
+  );
+}
+
+function WaitingSuggestionsPanel({
+  pending,
+  start,
+  tasks,
+  waitMinutes,
+}: {
+  pending: boolean;
+  start(task: Task): void;
+  tasks: Task[];
+  waitMinutes: number;
+}) {
+  return (
+    <aside
+      className="waiting-suggestions"
+      aria-labelledby="waiting-suggestions-title"
+    >
+      <div>
+        <p className="eyebrow">Expected wait · {waitMinutes} min</p>
+        <h2 id="waiting-suggestions-title">Short work that fits</h2>
+        <p>
+          The list is deterministic, capped at three, and excludes personal work
+          during protected hours.
+        </p>
+      </div>
+      {tasks.length === 0 ? (
+        <p className="empty-note">No eligible short tasks fit this wait.</p>
+      ) : (
+        <ul className="waiting-candidate-list">
+          {tasks.map((task) => (
+            <li key={task.id}>
+              <span>
+                <strong>{task.title}</strong>
+                <small>
+                  {task.estimateMinutes} min · {task.priority}
+                </small>
+              </span>
+              <button
+                className="button button--quiet"
+                disabled={pending}
+                onClick={() => start(task)}
+                type="button"
+              >
+                Start this
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
   );
 }

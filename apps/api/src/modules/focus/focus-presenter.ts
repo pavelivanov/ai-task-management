@@ -28,6 +28,7 @@ export function toFocusSessionContract(
     initialIntent: session.initialIntent,
     outcome: session.outcome,
     interruptionReason: session.interruptionReason,
+    expectedWaitMinutes: session.expectedWaitMinutes,
     focusedDurationSeconds,
     activeSegmentStartedAt: activeSegment?.startedAt.toISOString() ?? null,
     serverNow: now.toISOString(),

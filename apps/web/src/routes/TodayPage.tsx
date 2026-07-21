@@ -18,7 +18,10 @@ import {
 } from '../features/daily-plan/daily-plan-api';
 import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
 import { createAssistantSuggestion } from '../features/assistant/assistant-api';
-import { startFocus } from '../features/focus/focus-api';
+import {
+  scheduleAfterProtectedHours,
+  startFocus,
+} from '../features/focus/focus-api';
 import { captureInbox } from '../features/inbox/inbox-api';
 import { listTasks, taskFiltersKey } from '../features/tasks/task-api';
 import { ErrorState, LoadingState } from '../features/ui/AsyncState';
@@ -59,6 +62,9 @@ export function TodayPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<AssistantSuggestion | null>(
+    null,
+  );
+  const [protectedItem, setProtectedItem] = useState<DailyPlanItem | null>(
     null,
   );
   const dialogRef = useRef<HTMLElement>(null);
@@ -172,18 +178,51 @@ export function TodayPage() {
     },
   });
   const focus = useMutation({
-    mutationFn: (item: DailyPlanItem) =>
+    mutationFn: ({
+      item,
+      override = false,
+    }: {
+      item: DailyPlanItem;
+      override?: boolean;
+    }) =>
       startFocus({
         taskId: item.taskId,
         initialIntent: item.task.description ?? item.task.title,
+        protectedHoursOverride: override,
       }),
     onSuccess: async (session) => {
+      setProtectedItem(null);
       queryClient.setQueryData(queryKeys.focus(user.id), session);
       await refreshPlanAndTasks();
       navigate('/focus');
     },
+    onError: (error, variables) => {
+      if (
+        isApiError(error) &&
+        error.code === 'PROTECTED_HOURS_CONFIRMATION_REQUIRED'
+      ) {
+        setProtectedItem(variables.item);
+        setMessage(null);
+        return;
+      }
+      setMessage(isApiError(error) ? error.message : 'Focus could not start.');
+    },
+  });
+  const scheduleAfter = useMutation({
+    mutationFn: (item: DailyPlanItem) =>
+      scheduleAfterProtectedHours(item.taskId),
+    onSuccess: async (nextPlan) => {
+      setProtectedItem(null);
+      queryClient.setQueryData(queryKeys.today(user.id), nextPlan);
+      setMessage('Personal work was scheduled after the protected window.');
+      await refreshPlanAndTasks();
+    },
     onError: (error) =>
-      setMessage(isApiError(error) ? error.message : 'Focus could not start.'),
+      setMessage(
+        isApiError(error)
+          ? error.message
+          : 'The task could not be rescheduled.',
+      ),
   });
   const close = useMutation({
     mutationFn: () => {
@@ -380,7 +419,7 @@ export function TodayPage() {
                           <button
                             className="button button--primary"
                             disabled={focus.isPending}
-                            onClick={() => focus.mutate(item)}
+                            onClick={() => focus.mutate({ item })}
                             type="button"
                           >
                             Start
@@ -537,6 +576,55 @@ export function TodayPage() {
                 </li>
               ))}
             </ul>
+          </section>
+        </div>
+      )}
+      {protectedItem && (
+        <div className="dialog-backdrop" role="presentation">
+          <section
+            aria-labelledby="protected-hours-title"
+            aria-modal="true"
+            className="dialog protected-hours-dialog"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <p className="eyebrow">Protected work window</p>
+                <h2 id="protected-hours-title">Start personal work anyway?</h2>
+              </div>
+            </header>
+            <p>
+              <strong>{protectedItem.task.title}</strong> is personal work
+              inside your protected period. This is a warning, not a
+              prohibition.
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="button button--primary"
+                disabled={focus.isPending}
+                onClick={() =>
+                  focus.mutate({ item: protectedItem, override: true })
+                }
+                type="button"
+              >
+                Start anyway
+              </button>
+              <button
+                className="button"
+                disabled={scheduleAfter.isPending}
+                onClick={() => scheduleAfter.mutate(protectedItem)}
+                type="button"
+              >
+                Schedule after work
+              </button>
+              <button
+                className="text-button"
+                onClick={() => setProtectedItem(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
           </section>
         </div>
       )}

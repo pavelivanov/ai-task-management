@@ -14,6 +14,8 @@ export function toDailyReviewContract(review: StoredDailyReview): DailyReview {
     carriedOverTasks: review.carriedOverTasks,
     focusSessions: review.focusSessions,
     interruptionCount: review.interruptionCount,
+    estimatedFocusMinutes: review.estimatedFocusMinutes,
+    estimateVarianceMinutes: review.estimateVarianceMinutes,
     userReflection: review.userReflection,
     assistantSummary: review.assistantSummary,
     createdAt: review.createdAt.toISOString(),

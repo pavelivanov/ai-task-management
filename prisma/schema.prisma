@@ -121,6 +121,41 @@ enum AiSuggestionStatus {
   expired
 }
 
+enum AssistantTriggerType {
+  morning_plan_missing
+  estimate_exceeded
+  task_repeatedly_carried
+  current_task_waiting
+  end_of_day_review
+  plan_over_capacity
+  deadline_risk
+}
+
+enum AssistantTriggerStatus {
+  eligible
+  fired
+  resolved
+}
+
+enum NotificationType {
+  morning_plan
+  estimate_exceeded
+  repeated_carryover
+  current_task_waiting
+  end_of_day_review
+  plan_over_capacity
+  deadline_risk
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  sending
+  retry
+  sent
+  failed
+  skipped
+}
+
 model User {
   id                  String           @id @default(uuid()) @db.Uuid
   email               String           @unique @db.VarChar(320)
@@ -143,6 +178,9 @@ model User {
   conversations       Conversation[]
   conversationMessages ConversationMessage[]
   aiSuggestions       AiSuggestion[]
+  assistantTriggers   AssistantTrigger[]
+  notifications       Notification[]
+  pushSubscriptions   PushSubscription[]
 
   @@index([disabledAt])
   @@map("users")
@@ -243,6 +281,8 @@ model Task {
   events          TaskEvent[]
   dailyPlanItems  DailyPlanItem[]
   focusSessions   FocusSession[]
+  assistantTriggers AssistantTrigger[]
+  notifications   Notification[]
 
   @@index([userId, status, createdAt, id])
   @@index([userId, projectId, status])
@@ -317,6 +357,81 @@ model AiSuggestion {
   @@map("ai_suggestions")
 }
 
+model AssistantTrigger {
+  id            String                 @id @default(uuid()) @db.Uuid
+  userId        String                 @db.Uuid
+  type          AssistantTriggerType
+  status        AssistantTriggerStatus @default(eligible)
+  relatedTaskId String?                @db.Uuid
+  relatedDate   DateTime?              @db.Date
+  dedupeKey     String                 @db.VarChar(255)
+  eligibleAt    DateTime               @db.Timestamptz(3)
+  firedAt       DateTime?              @db.Timestamptz(3)
+  resolvedAt    DateTime?              @db.Timestamptz(3)
+  outcome       Json                   @default("{}")
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relatedTask   Task?                  @relation(fields: [relatedTaskId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, status, eligibleAt, id])
+  @@index([type, eligibleAt])
+  @@map("assistant_triggers")
+}
+
+model Notification {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  userId             String                     @db.Uuid
+  assistantTriggerId String?                    @db.Uuid
+  relatedTaskId      String?                    @db.Uuid
+  type               NotificationType
+  title              String                     @db.VarChar(160)
+  body               String                     @db.VarChar(500)
+  deepLink           String                     @db.VarChar(512)
+  dedupeKey          String                     @db.VarChar(255)
+  scheduledAt        DateTime                   @db.Timestamptz(3)
+  sentAt             DateTime?                  @db.Timestamptz(3)
+  readAt             DateTime?                  @db.Timestamptz(3)
+  deliveryStatus     NotificationDeliveryStatus @default(pending)
+  deliveryAttempts   Int                        @default(0)
+  maxAttempts        Int                        @default(3)
+  nextAttemptAt      DateTime?                  @db.Timestamptz(3)
+  leaseOwner         String?                    @db.VarChar(120)
+  leaseExpiresAt     DateTime?                  @db.Timestamptz(3)
+  version            Int                        @default(1)
+  lastErrorCode      String?                    @db.VarChar(80)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assistantTrigger   AssistantTrigger?          @relation(fields: [assistantTriggerId], references: [id], onDelete: SetNull)
+  relatedTask        Task?                      @relation(fields: [relatedTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt, id])
+  @@index([deliveryStatus, scheduledAt, nextAttemptAt, leaseExpiresAt])
+  @@map("notifications")
+}
+
+model PushSubscription {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  endpoint             String
+  endpointFingerprint String    @unique @db.Char(64)
+  p256dh               String
+  authSecret           String
+  expirationTime       DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  lastUsedAt           DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt            DateTime? @db.Timestamptz(3)
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, lastUsedAt])
+  @@map("push_subscriptions")
+}
+
 model TaskEvent {
   id          String        @id @default(uuid()) @db.Uuid
   userId      String        @db.Uuid
@@ -386,6 +501,7 @@ model FocusSession {
   initialIntent      String?
   outcome            String?
   interruptionReason String?
+  expectedWaitMinutes Int?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -423,6 +539,8 @@ model DailyReview {
   carriedOverTasks        Int      @default(0)
   focusSessions           Int      @default(0)
   interruptionCount       Int      @default(0)
+  estimatedFocusMinutes   Int      @default(0)
+  estimateVarianceMinutes Int      @default(0)
   userReflection          String?
   assistantSummary        String?
   createdAt               DateTime @default(now())

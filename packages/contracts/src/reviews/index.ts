@@ -12,6 +12,8 @@ export const dailyReviewSchema = z.object({
   carriedOverTasks: z.number().int().nonnegative(),
   focusSessions: z.number().int().nonnegative(),
   interruptionCount: z.number().int().nonnegative(),
+  estimatedFocusMinutes: z.number().int().nonnegative(),
+  estimateVarianceMinutes: z.number().int(),
   userReflection: z.string().nullable(),
   assistantSummary: z.string().nullable(),
   createdAt: z.iso.datetime({ offset: true }),

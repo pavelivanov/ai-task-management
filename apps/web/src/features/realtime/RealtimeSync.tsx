@@ -35,17 +35,24 @@ export function RealtimeSync({ userId }: { userId: string }) {
         queryKey: ['private', userId, 'assistant'],
       });
     };
+    const onNotification = () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications(userId),
+      });
+    };
 
     events.onopen = refetchCurrent;
     events.addEventListener('focus.changed', onFocus);
     events.addEventListener('plan.changed', onPlan);
     events.addEventListener('suggestion.changed', onSuggestion);
+    events.addEventListener('notification.changed', onNotification);
     window.addEventListener('online', refetchCurrent);
     return () => {
       window.removeEventListener('online', refetchCurrent);
       events.removeEventListener('focus.changed', onFocus);
       events.removeEventListener('plan.changed', onPlan);
       events.removeEventListener('suggestion.changed', onSuggestion);
+      events.removeEventListener('notification.changed', onNotification);
       events.close();
     };
   }, [queryClient, userId]);

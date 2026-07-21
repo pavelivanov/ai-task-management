@@ -9,17 +9,25 @@ import {
 } from '@nestjs/common';
 import {
   type AuthenticatedUser,
+  type CaptureFocusDistraction,
+  captureFocusDistractionSchema,
   type CompleteFocusSession,
   completeFocusSessionSchema,
   type CurrentFocusSession,
+  type DailyPlan,
   type FocusReason,
   focusReasonSchema,
   type FocusSession,
   focusSessionIdParamSchema,
+  type ScheduleAfterProtectedHours,
+  scheduleAfterProtectedHoursSchema,
   type StartFocusSession,
   startFocusSessionSchema,
   type StopFocusSession,
   stopFocusSessionSchema,
+  type Task,
+  type WaitForFocusSession,
+  waitForFocusSessionSchema,
 } from '@execution/contracts';
 import type { Response } from 'express';
 
@@ -80,9 +88,32 @@ export class FocusController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('sessionId', new ZodValidationPipe(focusSessionIdParamSchema))
     sessionId: string,
-    @Body(new ZodValidationPipe(focusReasonSchema)) input: FocusReason,
+    @Body(new ZodValidationPipe(waitForFocusSessionSchema))
+    input: WaitForFocusSession,
   ): Promise<FocusSession> {
     return this.focus.wait(user.id, sessionId, input);
+  }
+
+  @Post('schedule-after-protected-hours')
+  @UseGuards(CsrfOriginGuard)
+  scheduleAfterProtectedHours(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(scheduleAfterProtectedHoursSchema))
+    input: ScheduleAfterProtectedHours,
+  ): Promise<DailyPlan> {
+    return this.focus.scheduleAfterProtectedHours(user.id, input.taskId);
+  }
+
+  @Post(':sessionId/distractions')
+  @UseGuards(CsrfOriginGuard)
+  captureDistraction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId', new ZodValidationPipe(focusSessionIdParamSchema))
+    sessionId: string,
+    @Body(new ZodValidationPipe(captureFocusDistractionSchema))
+    input: CaptureFocusDistraction,
+  ): Promise<Task> {
+    return this.focus.captureDistraction(user.id, sessionId, input);
   }
 
   @Post(':sessionId/block')

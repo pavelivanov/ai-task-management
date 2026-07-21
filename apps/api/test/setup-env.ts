@@ -12,3 +12,6 @@ process.env.WEB_ORIGINS = 'http://localhost:5173';
 process.env.SSE_HEARTBEAT_SECONDS = '1';
 process.env.ASSISTANT_PROVIDER = 'fake';
 process.env.ASSISTANT_WORKER_INTERVAL_MS = '60000';
+process.env.BEHAVIOR_SCHEDULER_INTERVAL_MS = '300000';
+process.env.NOTIFICATION_WORKER_INTERVAL_MS = '60000';
+process.env.PUSH_PROVIDER = 'fake';
