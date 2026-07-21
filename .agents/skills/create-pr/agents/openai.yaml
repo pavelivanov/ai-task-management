@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Create PR'
+  short_description: 'Publish a verified worktree as a draft PR'
+  default_prompt: 'Use $create-pr to publish this completed worktree as a draft pull request and monitor merge cleanup.'

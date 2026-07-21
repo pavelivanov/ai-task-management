@@ -53,9 +53,29 @@ npm run start:dev --workspace apps/api
 npm run dev --workspace apps/web
 ```
 
+### Codex task workflow
+
+Implementation tasks use one isolated Git worktree and one
+`codex/<task-slug>` branch per task. Keep the primary checkout clean on `main`;
+start or hand off each coding task to a Codex worktree before any edits. Codex
+verifies and commits the finished change locally but does not publish it until
+you explicitly invoke `$create-pr` or choose `create-pr` from `/skills`.
+
+`create-pr` requires an authenticated GitHub CLI. It pushes the task branch,
+opens a draft pull request, and starts a background merge watcher. When the PR
+is merged, the watcher fast-forwards the primary checkout to `origin/main`,
+removes the task worktree, and deletes the local and remote task branches. It
+refuses cleanup if either checkout contains uncommitted changes and records the
+reason in the log path printed when the PR is created.
+
+Codex does not support repository-scoped custom slash commands. The deprecated
+local prompt mechanism can expose `/create-pr` only in a single user's CLI or
+IDE configuration, so this repository uses the shared `$create-pr` skill.
+
 The API listens on `http://localhost:3000`; its stable liveness endpoint is
 `GET /health`, database/migration readiness is `GET /health/ready`, and bounded
-process-local pilot metrics are exposed at `GET /health/metrics`. Google login starts at `GET /auth/google`; authenticated clients
+process-local pilot metrics are exposed at `GET /health/metrics`. Google login
+starts at `GET /auth/google`; authenticated clients
 can use `GET /auth/me` and `GET/PATCH /users/me/preferences`. The web app listens
 on `http://localhost:5173`.
 

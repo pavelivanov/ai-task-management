@@ -49,18 +49,28 @@ Run the narrowest relevant workspace command while iterating, then run
   authenticated request context; never accept ownership authority from a body.
 - Use Conventional Commits for commit messages.
 
-## Completion and Git workflow
+## Strict worktree and Git workflow
 
-- Treat a successful commit, push, and pull request as mandatory parts of the
-  definition of done for every completed implementation task.
-- After the required verification passes, audit the diff, stage only the
-  intended files, create a Conventional Commit, and push the current branch.
-  If it has no upstream, set one with `git push --set-upstream origin <branch>`.
-- Immediately after the push succeeds, open a pull request from the current
-  branch to the repository's default branch. Create it as a draft unless the
-  user explicitly requests a ready-for-review pull request.
-- Do not report the work as complete while intended changes remain only in the
-  working tree, only in the index, only in a local commit, or on a pushed branch
-  without a pull request. If the push or pull-request creation is blocked,
-  report the blocker instead of claiming completion.
-- Never force-push unless the user explicitly requests it.
+- Perform every implementation task in a new, task-specific Git worktree based
+  on the latest `main`. Read-only inspection and explanation tasks are exempt.
+- Keep the primary checkout clean and checked out on `main`. Never edit, commit,
+  or switch to a feature branch in the primary checkout. If an implementation
+  request starts there, stop before editing and move the task to a worktree.
+- Use exactly one `codex/<task-slug>` branch and one worktree per task. A
+  Codex-managed detached worktree must be attached to that branch before the
+  first commit. Never reuse a worktree or branch from another task.
+- Run the narrowest relevant checks while iterating and `npm run verify` before
+  completion. Audit the diff, stage only intended files, and create a
+  Conventional Commit in the worktree.
+- Do not push or open a pull request automatically when implementation is
+  complete. Report the verified local commit and tell the user to invoke
+  `$create-pr` (or select `create-pr` through `/skills`) when they want to
+  publish it. A project-local `/create-pr` slash command is not supported.
+- When `$create-pr` is invoked, follow `.agents/skills/create-pr/SKILL.md`. It
+  pushes the task branch, opens a draft pull request by default, and starts the
+  merge watcher. Never force-push.
+- After the pull request is merged, the merge watcher must fast-forward the
+  primary checkout on `main`, remove the task worktree, delete the local task
+  branch, and delete the remote task branch if GitHub did not already do so. It
+  must refuse destructive cleanup when either checkout has uncommitted changes
+  and leave a recovery log instead.
