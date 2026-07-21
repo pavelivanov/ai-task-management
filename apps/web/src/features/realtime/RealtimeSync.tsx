@@ -30,15 +30,22 @@ export function RealtimeSync({ userId }: { userId: string }) {
         }),
       ]);
     };
+    const onSuggestion = () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['private', userId, 'assistant'],
+      });
+    };
 
     events.onopen = refetchCurrent;
     events.addEventListener('focus.changed', onFocus);
     events.addEventListener('plan.changed', onPlan);
+    events.addEventListener('suggestion.changed', onSuggestion);
     window.addEventListener('online', refetchCurrent);
     return () => {
       window.removeEventListener('online', refetchCurrent);
       events.removeEventListener('focus.changed', onFocus);
       events.removeEventListener('plan.changed', onPlan);
+      events.removeEventListener('suggestion.changed', onSuggestion);
       events.close();
     };
   }, [queryClient, userId]);

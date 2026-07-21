@@ -5,6 +5,8 @@
 node_modules/
 dist/
 coverage/
+output/
+.playwright-cli/
 apps/api/src/generated/prisma/
 *.tsbuildinfo
 *.log

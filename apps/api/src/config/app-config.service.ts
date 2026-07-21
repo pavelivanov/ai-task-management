@@ -38,6 +38,50 @@ const environmentSchema = z
       .min(1)
       .max(10_000)
       .default(1_000),
+    ASSISTANT_PROVIDER: z
+      .enum(['disabled', 'fake', 'openai'])
+      .default('disabled'),
+    OPENAI_API_KEY: z.string().min(1).optional(),
+    OPENAI_MODEL: z.string().min(1).max(120).default('gpt-5.6-sol'),
+    ASSISTANT_REASONING_EFFORT: z
+      .enum(['none', 'low', 'medium', 'high'])
+      .default('low'),
+    ASSISTANT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(120_000)
+      .default(30_000),
+    ASSISTANT_RATE_LIMIT_PER_MINUTE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(10),
+    ASSISTANT_MAX_CONCURRENCY_PER_USER: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .default(2),
+    ASSISTANT_RETENTION_DAYS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30),
+    ASSISTANT_WORKER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(60_000)
+      .default(1_000),
+    ASSISTANT_LEASE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(5)
+      .max(300)
+      .default(30),
   })
   .transform((value, context) => {
     const allowedCallbackUrls = value.AUTH_ALLOWED_CALLBACK_URLS.split(',')
@@ -74,6 +118,25 @@ const environmentSchema = z
       });
       return z.NEVER;
     }
+    if (value.ASSISTANT_PROVIDER === 'openai' && !value.OPENAI_API_KEY) {
+      context.addIssue({
+        code: 'custom',
+        message: 'OPENAI_API_KEY is required when ASSISTANT_PROVIDER=openai.',
+        path: ['OPENAI_API_KEY'],
+      });
+      return z.NEVER;
+    }
+    if (
+      value.NODE_ENV === 'production' &&
+      value.ASSISTANT_PROVIDER === 'fake'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'The fake assistant provider cannot run in production.',
+        path: ['ASSISTANT_PROVIDER'],
+      });
+      return z.NEVER;
+    }
 
     return {
       nodeEnvironment: value.NODE_ENV,
@@ -94,6 +157,16 @@ const environmentSchema = z
       sseHeartbeatSeconds: value.SSE_HEARTBEAT_SECONDS,
       sseMaxSubscribersPerUser: value.SSE_MAX_SUBSCRIBERS_PER_USER,
       sseMaxSubscribersTotal: value.SSE_MAX_SUBSCRIBERS_TOTAL,
+      assistantProvider: value.ASSISTANT_PROVIDER,
+      openAiApiKey: value.OPENAI_API_KEY,
+      openAiModel: value.OPENAI_MODEL,
+      assistantReasoningEffort: value.ASSISTANT_REASONING_EFFORT,
+      assistantTimeoutMs: value.ASSISTANT_TIMEOUT_MS,
+      assistantRateLimitPerMinute: value.ASSISTANT_RATE_LIMIT_PER_MINUTE,
+      assistantMaxConcurrencyPerUser: value.ASSISTANT_MAX_CONCURRENCY_PER_USER,
+      assistantRetentionDays: value.ASSISTANT_RETENTION_DAYS,
+      assistantWorkerIntervalMs: value.ASSISTANT_WORKER_INTERVAL_MS,
+      assistantLeaseSeconds: value.ASSISTANT_LEASE_SECONDS,
     };
   });
 
@@ -119,6 +192,16 @@ export class AppConfig {
   readonly sseHeartbeatSeconds!: number;
   readonly sseMaxSubscribersPerUser!: number;
   readonly sseMaxSubscribersTotal!: number;
+  readonly assistantProvider!: 'disabled' | 'fake' | 'openai';
+  readonly openAiApiKey!: string | undefined;
+  readonly openAiModel!: string;
+  readonly assistantReasoningEffort!: 'none' | 'low' | 'medium' | 'high';
+  readonly assistantTimeoutMs!: number;
+  readonly assistantRateLimitPerMinute!: number;
+  readonly assistantMaxConcurrencyPerUser!: number;
+  readonly assistantRetentionDays!: number;
+  readonly assistantWorkerIntervalMs!: number;
+  readonly assistantLeaseSeconds!: number;
 
   constructor(
     @Optional()

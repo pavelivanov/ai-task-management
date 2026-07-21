@@ -48,6 +48,8 @@ export default defineConfig({
         WEB_ORIGINS: webUrl,
         E2E_AUTH_ENABLED: 'true',
         SSE_HEARTBEAT_SECONDS: '1',
+        ASSISTANT_PROVIDER: 'fake',
+        ASSISTANT_WORKER_INTERVAL_MS: '200',
       },
     },
     {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AppConfigModule } from './config/app-config.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DailyPlansModule } from './modules/daily-plans/daily-plans.module';
 import { FocusModule } from './modules/focus/focus.module';
@@ -15,6 +16,7 @@ import { UsersModule } from './modules/users/users.module';
 @Module({
   imports: [
     AppConfigModule,
+    AssistantModule,
     AuthModule,
     DailyPlansModule,
     FocusModule,

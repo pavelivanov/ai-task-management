@@ -196,6 +196,20 @@ export class ReviewsService {
     return this.get(userId, validatedDate);
   }
 
+  async setAssistantSummaryInTransaction(
+    transaction: Transaction,
+    userId: string,
+    date: string,
+    summary: string,
+  ): Promise<void> {
+    const validatedDate = validateLocalDate(date);
+    const updated = await transaction.dailyReview.updateMany({
+      where: { userId, date: databaseDate(validatedDate) },
+      data: { assistantSummary: summary },
+    });
+    if (updated.count !== 1) this.throwNotFound();
+  }
+
   private hasSourcePlanDate(metadata: Prisma.JsonValue, date: string): boolean {
     return (
       typeof metadata === 'object' &&

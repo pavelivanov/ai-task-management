@@ -15,6 +15,17 @@ export const taskStatusSchema = z.enum([
 export const taskCategorySchema = z.enum(['work', 'personal']);
 export const taskPrioritySchema = z.enum(['low', 'normal', 'high', 'critical']);
 
+export const taskBlockReasonSchema = z.enum([
+  'unclear_next_step',
+  'too_large',
+  'missing_information',
+  'fear_of_error',
+  'low_value',
+  'boring',
+  'external_dependency',
+  'other',
+]);
+
 export const taskEventTypeSchema = z.enum([
   'created',
   'updated',
@@ -100,6 +111,8 @@ export const taskSchema = z.object({
   dueAt: taskDueAtSchema.nullable(),
   projectId: z.uuid().nullable(),
   parentTaskId: z.uuid().nullable(),
+  blockReason: taskBlockReasonSchema.nullable(),
+  blockReasonDetails: z.string().nullable(),
   carryoverCount: z.number().int().nonnegative(),
   version: z.number().int().positive(),
   createdAt: taskDueAtSchema,
@@ -137,6 +150,7 @@ export const taskHistoryQuerySchema = z
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskCategory = z.infer<typeof taskCategorySchema>;
 export type TaskPriority = z.infer<typeof taskPrioritySchema>;
+export type TaskBlockReason = z.infer<typeof taskBlockReasonSchema>;
 export type TaskEventType = z.infer<typeof taskEventTypeSchema>;
 export type CreateTask = z.output<typeof createTaskSchema>;
 export type UpdateTask = z.output<typeof updateTaskSchema>;

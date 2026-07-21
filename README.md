@@ -71,6 +71,22 @@ focus segments when a day closes or through the explicit review-generation
 endpoint. Regeneration preserves the user's reflection and never assigns a
 productivity score.
 
+Bounded assistant proposals are available for task extraction, daily planning,
+task decomposition, carryover diagnosis, and outcome summaries. Every proposal
+is stored and validated before it is shown, and every task or plan write still
+requires explicit user confirmation. The app defaults to
+`ASSISTANT_PROVIDER=disabled`; use `fake` for deterministic local testing or
+`openai` with an externally supplied `OPENAI_API_KEY`. The OpenAI adapter uses
+the Responses API with strict structured output and a configurable
+`OPENAI_MODEL` (default `gpt-5.6-sol`).
+
+Assistant routes live under `/assistant/suggestions`: create a bounded request,
+fetch its current status, then explicitly accept/edit or reject it. Plan and
+review requests run through the durable database worker and publish
+content-free `suggestion.changed` invalidations. Prompt bodies are not logged;
+stored context expires on the configured retention boundary, and deleting a
+task purges retained assistant context for that owner.
+
 ## Verification
 
 Run the complete non-browser gate with:
@@ -81,7 +97,9 @@ npm run verify
 
 Individual gates are available as `npm run format:check`, `npm run lint`,
 `npm run typecheck`, `npm test`, `npm run test:integration`, and
-`npm run build`. The isolated Playwright journey, responsive smoke checks, and
+`npm run build`. The fixed offline assistant evaluation suite runs with
+`npm run eval:ai` and never requires an API key. The isolated Playwright journey,
+responsive smoke checks, and
 automated accessibility gate run with:
 
 ```bash

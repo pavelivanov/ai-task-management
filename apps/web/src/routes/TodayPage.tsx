@@ -1,4 +1,5 @@
 import type {
+  AssistantSuggestion,
   DailyPlanItem,
   DailyPlanRole,
   PlanningWarning,
@@ -15,6 +16,8 @@ import {
   getTodayPlan,
   movePlanItem,
 } from '../features/daily-plan/daily-plan-api';
+import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
+import { createAssistantSuggestion } from '../features/assistant/assistant-api';
 import { startFocus } from '../features/focus/focus-api';
 import { captureInbox } from '../features/inbox/inbox-api';
 import { listTasks, taskFiltersKey } from '../features/tasks/task-api';
@@ -55,6 +58,9 @@ export function TodayPage() {
   const [captureTitle, setCaptureTitle] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<AssistantSuggestion | null>(
+    null,
+  );
   const dialogRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!addToPlanOpen) return;
@@ -193,6 +199,25 @@ export function TodayPage() {
         isApiError(error) ? error.message : 'The day could not close.',
       ),
   });
+  const suggestPlan = useMutation({
+    mutationFn: () => {
+      if (!today.data) throw new Error('Plan unavailable.');
+      return createAssistantSuggestion({
+        type: 'daily_plan',
+        date: today.data.date,
+      });
+    },
+    onSuccess: (result) => {
+      setSuggestion(result);
+      setMessage(null);
+    },
+    onError: (error) =>
+      setMessage(
+        isApiError(error)
+          ? error.message
+          : 'A plan proposal could not be prepared.',
+      ),
+  });
 
   const notFound = isApiError(today.error) && today.error.status === 404;
   if (today.isPending) return <LoadingState label="Composing today…" />;
@@ -244,19 +269,40 @@ export function TodayPage() {
         </div>
         <div className="header-actions">
           {plan.status !== 'closed' && (
-            <button
-              className="button button--primary"
-              onClick={() => setAddToPlanOpen(true)}
-              type="button"
-            >
-              Add commitment
-            </button>
+            <>
+              <button
+                className="button"
+                disabled={suggestPlan.isPending}
+                onClick={() => suggestPlan.mutate()}
+                type="button"
+              >
+                Suggest plan
+              </button>
+              <button
+                className="button button--primary"
+                onClick={() => setAddToPlanOpen(true)}
+                type="button"
+              >
+                Add commitment
+              </button>
+            </>
           )}
           <span className={`status-pill status-pill--${plan.status}`}>
             {plan.status}
           </span>
         </div>
       </header>
+
+      {suggestion && (
+        <AssistantSuggestionCard
+          initial={suggestion}
+          onApplied={async () => {
+            setSuggestion(null);
+            await refreshPlanAndTasks();
+          }}
+          userId={user.id}
+        />
+      )}
 
       {plan.warnings.length > 0 && (
         <section className="warning-strip" aria-labelledby="plan-warnings">
