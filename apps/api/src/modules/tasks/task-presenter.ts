@@ -20,6 +20,8 @@ export function toTaskContract(task: StoredTask): TaskContract {
     dueAt: task.dueAt?.toISOString() ?? null,
     projectId: task.projectId,
     parentTaskId: task.parentTaskId,
+    blockReason: task.blockReason,
+    blockReasonDetails: task.blockReasonDetails,
     carryoverCount: task.carryoverCount,
     version: task.version,
     createdAt: task.createdAt.toISOString(),

@@ -12,6 +12,7 @@
 ## Status
 
 - **Priority**: P1
+- **Status**: DONE
 - **Effort**: XL
 - **Risk**: HIGH — model mistakes must not become unauthorized state changes
 - **Depends on**: `plans/006-deterministic-web-review.md`
@@ -225,14 +226,14 @@ and cost-bearing.
 
 ## Done criteria
 
-- [ ] All five MVP AI capabilities exist behind structured contracts.
-- [ ] No provider output can directly mutate persistence.
-- [ ] Every write requires a typed accepted/edited suggestion and audit event.
-- [ ] Context is bounded and cross-user leakage tests pass.
-- [ ] Real provider is optional for tests and app remains usable when unavailable.
-- [ ] Prompt bodies and raw sensitive responses are absent from general logs.
-- [ ] `npm run eval:ai`, `npm run verify`, and assistant E2E pass.
-- [ ] `plans/README.md` status row is updated.
+- [x] All five MVP AI capabilities exist behind structured contracts.
+- [x] No provider output can directly mutate persistence.
+- [x] Every write requires a typed accepted/edited suggestion and audit event.
+- [x] Context is bounded and cross-user leakage tests pass.
+- [x] Real provider is optional for tests and app remains usable when unavailable.
+- [x] Prompt bodies and raw sensitive responses are absent from general logs.
+- [x] `npm run eval:ai`, `npm run verify`, and assistant E2E pass.
+- [x] `plans/README.md` status row is updated.
 
 ## STOP conditions
 

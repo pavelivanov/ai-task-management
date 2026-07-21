@@ -1,4 +1,8 @@
-import type { ProcessInboxTask, Task } from '@execution/contracts';
+import type {
+  AssistantSuggestion,
+  ProcessInboxTask,
+  Task,
+} from '@execution/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -7,6 +11,8 @@ import {
   listInbox,
   processInbox,
 } from '../features/inbox/inbox-api';
+import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
+import { createAssistantSuggestion } from '../features/assistant/assistant-api';
 import {
   EmptyState,
   ErrorState,
@@ -22,6 +28,9 @@ export function InboxPage() {
   const [title, setTitle] = useState('');
   const [estimateMinutes, setEstimateMinutes] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<AssistantSuggestion | null>(
+    null,
+  );
   const inbox = useQuery({
     queryKey: queryKeys.inbox(user.id),
     queryFn: () => listInbox(),
@@ -55,6 +64,21 @@ export function InboxPage() {
     onError: (error) =>
       setActionError(
         isApiError(error) ? error.message : 'The inbox item changed.',
+      ),
+  });
+  const extract = useMutation({
+    mutationFn: () =>
+      createAssistantSuggestion({
+        type: 'task_extraction',
+        sourceText: title,
+      }),
+    onSuccess: (result) => {
+      setSuggestion(result);
+      setActionError(null);
+    },
+    onError: (error) =>
+      setActionError(
+        isApiError(error) ? error.message : 'A proposal could not be prepared.',
       ),
   });
 
@@ -121,8 +145,27 @@ export function InboxPage() {
           >
             Capture
           </button>
+          <button
+            className="button button--quiet"
+            disabled={!title.trim() || extract.isPending}
+            onClick={() => extract.mutate()}
+            type="button"
+          >
+            Extract tasks
+          </button>
         </div>
       </form>
+      {suggestion && (
+        <AssistantSuggestionCard
+          initial={suggestion}
+          onApplied={async () => {
+            setTitle('');
+            setSuggestion(null);
+            await invalidate();
+          }}
+          userId={user.id}
+        />
+      )}
       {actionError && (
         <p className="error-message" role="alert">
           {actionError}

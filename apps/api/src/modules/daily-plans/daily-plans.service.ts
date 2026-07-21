@@ -11,6 +11,7 @@ import type {
   CloseDailyPlan,
   CreateTodayPlan,
   DailyPlan,
+  DailyPlanSuggestionOutput,
   DailyPlanRole,
   UpdateDailyPlanItem,
   UpdateTodayPlan,
@@ -32,6 +33,7 @@ import { type Clock, CLOCK } from '../auth/clock';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { TaskLifecycleService } from '../tasks/task-lifecycle.service';
+import { TasksService } from '../tasks/tasks.service';
 import {
   databaseDate,
   formatLocalTime,
@@ -73,7 +75,76 @@ export class DailyPlansService {
     private readonly closeGuard: DailyPlanCloseGuard,
     private readonly invalidations: InvalidationStreamService,
     private readonly reviews: ReviewsService,
+    private readonly tasks: TasksService,
   ) {}
+
+  async applySuggestionInTransaction(
+    transaction: Transaction,
+    userId: string,
+    suggestionId: string,
+    output: DailyPlanSuggestionOutput,
+  ): Promise<{ id: string; version: number }> {
+    const preferences = await transaction.userPreferences.findUnique({
+      where: { userId },
+      include: { user: { select: { timezone: true } } },
+    });
+    if (!preferences) {
+      throw new NotFoundException({
+        code: 'PREFERENCES_NOT_FOUND',
+        message: 'User preferences were not found.',
+      });
+    }
+    const context: PlanningContext = {
+      timezone: preferences.user.timezone,
+      workdayStart: preferences.workdayStart,
+      workdayEnd: preferences.workdayEnd,
+      primaryLimit: preferences.primaryTaskLimit,
+      secondaryLimit: preferences.secondaryTaskLimit,
+      overCapacityPercent: preferences.capacityWarningPercent,
+    };
+    const today = localDateForInstant(this.clock.now(), context.timezone);
+    let plan = await this.ensurePlan(
+      transaction,
+      userId,
+      output.date,
+      output.date === today ? 'active' : 'draft',
+      context,
+    );
+
+    for (const [position, item] of output.items.entries()) {
+      const task = await transaction.task.findFirst({
+        where: { id: item.taskId, userId },
+        select: { version: true },
+      });
+      if (!task || task.version !== item.taskVersion) {
+        throw new ConflictException({
+          code: 'ASSISTANT_SUGGESTION_STALE',
+          message: 'A referenced task changed before the plan was applied.',
+        });
+      }
+      await this.addItem(transaction, userId, plan, output.date, context, {
+        taskId: item.taskId,
+        role: item.role,
+        plannedDurationMinutes: item.plannedDurationMinutes,
+        position,
+      });
+      await this.tasks.appendAssistantAcceptanceInTransaction(
+        transaction,
+        userId,
+        item.taskId,
+        suggestionId,
+        { capability: 'daily_plan', planDate: output.date },
+      );
+      plan = await transaction.dailyPlan.findUniqueOrThrow({
+        where: { id: plan.id },
+      });
+    }
+    return { id: plan.id, version: plan.version };
+  }
+
+  async publishPlanChanged(userId: string, planId: string): Promise<void> {
+    await this.presentAndPublish(userId, planId);
+  }
 
   async getToday(userId: string): Promise<DailyPlan> {
     const context = await this.getPlanningContext(userId);

@@ -30,4 +30,6 @@ export const queryKeys = {
   preferences: (userId: string) => ['private', userId, 'preferences'] as const,
   review: (userId: string, date: string) =>
     ['private', userId, 'review', date] as const,
+  assistantSuggestion: (userId: string, suggestionId: string) =>
+    ['private', userId, 'assistant', suggestionId] as const,
 };

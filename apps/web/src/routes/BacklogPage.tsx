@@ -1,4 +1,9 @@
-import type { Task, TaskCategory, TaskStatus } from '@execution/contracts';
+import type {
+  AssistantSuggestion,
+  Task,
+  TaskCategory,
+  TaskStatus,
+} from '@execution/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -8,6 +13,8 @@ import {
   createTodayPlan,
   getTodayPlan,
 } from '../features/daily-plan/daily-plan-api';
+import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
+import { createAssistantSuggestion } from '../features/assistant/assistant-api';
 import {
   createTask,
   listTasks,
@@ -50,6 +57,9 @@ export function BacklogPage() {
   const projectId = searchParams.get('project') ?? '';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [suggestion, setSuggestion] = useState<AssistantSuggestion | null>(
+    null,
+  );
   const [dueSoonBoundary] = useState(
     () => Date.now() + 7 * 24 * 60 * 60 * 1_000,
   );
@@ -163,6 +173,25 @@ export function BacklogPage() {
     onError: (error) =>
       setMessage(isApiError(error) ? error.message : 'Could not add the task.'),
   });
+  const assistTask = useMutation({
+    mutationFn: ({
+      task,
+      type,
+    }: {
+      task: Task;
+      type: 'task_decomposition' | 'carryover_diagnosis';
+    }) => createAssistantSuggestion({ type, taskId: task.id }),
+    onSuccess: (result) => {
+      setSuggestion(result);
+      setMessage(null);
+    },
+    onError: (error) =>
+      setMessage(
+        isApiError(error)
+          ? error.message
+          : 'A task proposal could not be prepared.',
+      ),
+  });
 
   return (
     <div className="page page--queue">
@@ -252,6 +281,16 @@ export function BacklogPage() {
         <p className="inline-message" role="status">
           {message}
         </p>
+      )}
+      {suggestion && (
+        <AssistantSuggestionCard
+          initial={suggestion}
+          onApplied={async () => {
+            setSuggestion(null);
+            await invalidateTasks();
+          }}
+          userId={user.id}
+        />
       )}
       {tasks.isPending && <LoadingState label="Reading the backlog…" />}
       {tasks.error && (
@@ -343,6 +382,31 @@ export function BacklogPage() {
                 >
                   Edit
                 </button>
+                <button
+                  className="text-button"
+                  disabled={assistTask.isPending}
+                  onClick={() =>
+                    assistTask.mutate({ task, type: 'task_decomposition' })
+                  }
+                  type="button"
+                >
+                  Break down
+                </button>
+                {task.carryoverCount >= 3 && (
+                  <button
+                    className="text-button"
+                    disabled={assistTask.isPending}
+                    onClick={() =>
+                      assistTask.mutate({
+                        task,
+                        type: 'carryover_diagnosis',
+                      })
+                    }
+                    type="button"
+                  >
+                    Diagnose blocker
+                  </button>
+                )}
                 <button
                   className="text-button"
                   disabled={transition.isPending}

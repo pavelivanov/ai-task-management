@@ -22,6 +22,7 @@
     "@prisma/adapter-pg": "7.6.0",
     "@prisma/client": "7.6.0",
     "google-auth-library": "^10.5.0",
+    "openai": "^6.48.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.3.5"

@@ -21,6 +21,7 @@
     "db:validate": "prisma validate",
     "db:down": "docker compose down",
     "db:up": "docker compose up -d postgres",
+    "eval:ai": "tsx apps/api/evals/run-ai-evals.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",

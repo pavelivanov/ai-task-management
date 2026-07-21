@@ -1,3 +1,4 @@
+import type { AssistantSuggestion } from '@execution/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -7,6 +8,8 @@ import {
   getDailyReview,
   saveReflection,
 } from '../features/reviews/review-api';
+import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
+import { createAssistantSuggestion } from '../features/assistant/assistant-api';
 import { ErrorState, LoadingState } from '../features/ui/AsyncState';
 import { isApiError } from '../lib/api-client';
 import { formatMinutes, localDateInTimezone } from '../lib/date';
@@ -99,6 +102,9 @@ function ReviewContent({
   const queryClient = useQueryClient();
   const [reflection, setReflection] = useState(review.userReflection ?? '');
   const [saved, setSaved] = useState(false);
+  const [suggestion, setSuggestion] = useState<AssistantSuggestion | null>(
+    null,
+  );
   const save = useMutation({
     mutationFn: () => saveReflection(date, reflection.trim() || null),
     onSuccess: (data) => {
@@ -110,6 +116,11 @@ function ReviewContent({
     mutationFn: () => generateDailyReview(date),
     onSuccess: (data) =>
       queryClient.setQueryData(queryKeys.review(userId, date), data),
+  });
+  const summarize = useMutation({
+    mutationFn: () =>
+      createAssistantSuggestion({ type: 'outcome_summary', date }),
+    onSuccess: setSuggestion,
   });
 
   return (
@@ -201,9 +212,30 @@ function ReviewContent({
           >
             Recompute facts
           </button>
+          <button
+            className="text-button"
+            disabled={summarize.isPending}
+            onClick={() => summarize.mutate()}
+            type="button"
+          >
+            Draft outcome summary
+          </button>
         </div>
         {save.error && <ErrorState error={save.error} />}
       </section>
+
+      {suggestion && (
+        <AssistantSuggestionCard
+          initial={suggestion}
+          onApplied={async () => {
+            setSuggestion(null);
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.review(userId, date),
+            });
+          }}
+          userId={userId}
+        />
+      )}
 
       {review.assistantSummary && (
         <aside className="assistant-note" aria-label="Assistant recommendation">

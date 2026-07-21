@@ -43,44 +43,141 @@ export class TasksService {
     input: CreateTask,
     status: TaskStatus = 'backlog',
   ): Promise<Task> {
-    return this.prisma.$transaction(async (transaction) => {
-      const normalized = this.normalizeCreateInput(input);
-      await this.validateAssociations(
-        transaction,
-        userId,
-        normalized.projectId,
-        normalized.parentTaskId,
-      );
+    return this.prisma.$transaction((transaction) =>
+      this.createInTransaction(transaction, userId, input, status),
+    );
+  }
 
-      const now = this.clock.now();
-      const task = await transaction.task.create({
-        data: {
-          userId,
-          title: normalized.title,
-          description: normalized.description,
-          category: input.category,
-          status,
-          priority: input.priority,
-          estimateMinutes: normalized.estimateMinutes,
-          dueAt: normalized.dueAt,
-          projectId: normalized.projectId,
-          parentTaskId: normalized.parentTaskId,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-      await transaction.taskEvent.create({
-        data: {
-          userId,
-          taskId: task.id,
-          taskVersion: task.version,
-          type: 'created',
-          metadata: { status },
-          createdAt: now,
-        },
-      });
-      return toTaskContract(task);
+  async createInTransaction(
+    transaction: Transaction,
+    userId: string,
+    input: CreateTask,
+    status: TaskStatus = 'backlog',
+  ): Promise<Task> {
+    const normalized = this.normalizeCreateInput(input);
+    await this.validateAssociations(
+      transaction,
+      userId,
+      normalized.projectId,
+      normalized.parentTaskId,
+    );
+
+    const now = this.clock.now();
+    const task = await transaction.task.create({
+      data: {
+        userId,
+        title: normalized.title,
+        description: normalized.description,
+        category: input.category,
+        status,
+        priority: input.priority,
+        estimateMinutes: normalized.estimateMinutes,
+        dueAt: normalized.dueAt,
+        projectId: normalized.projectId,
+        parentTaskId: normalized.parentTaskId,
+        createdAt: now,
+        updatedAt: now,
+      },
     });
+    await transaction.taskEvent.create({
+      data: {
+        userId,
+        taskId: task.id,
+        taskVersion: task.version,
+        type: 'created',
+        metadata: { status },
+        createdAt: now,
+      },
+    });
+    return toTaskContract(task);
+  }
+
+  async appendAssistantAcceptanceInTransaction(
+    transaction: Transaction,
+    userId: string,
+    taskId: string,
+    suggestionId: string,
+    metadata: Prisma.InputJsonObject = {},
+  ): Promise<Task> {
+    const current = await transaction.task.findFirst({
+      where: { id: taskId, userId },
+    });
+    if (!current) this.throwNotFound();
+    const update = await transaction.task.updateMany({
+      where: { id: taskId, userId, version: current.version },
+      data: { version: { increment: 1 } },
+    });
+    if (update.count !== 1) this.throwVersionConflict();
+    await transaction.taskEvent.create({
+      data: {
+        userId,
+        taskId,
+        taskVersion: current.version + 1,
+        type: 'ai_suggestion_accepted',
+        metadata: { suggestionId, ...metadata },
+        createdAt: this.clock.now(),
+      },
+    });
+    return toTaskContract(
+      await transaction.task.findUniqueOrThrow({ where: { id: taskId } }),
+    );
+  }
+
+  async setBlockReasonFromSuggestionInTransaction(
+    transaction: Transaction,
+    input: {
+      userId: string;
+      taskId: string;
+      expectedVersion: number;
+      suggestionId: string;
+      blockReason:
+        | 'unclear_next_step'
+        | 'too_large'
+        | 'missing_information'
+        | 'fear_of_error'
+        | 'low_value'
+        | 'boring'
+        | 'external_dependency'
+        | 'other';
+      details: string;
+    },
+  ): Promise<Task> {
+    const current = await transaction.task.findFirst({
+      where: { id: input.taskId, userId: input.userId },
+    });
+    if (!current) this.throwNotFound();
+    if (current.version !== input.expectedVersion) this.throwVersionConflict();
+    const update = await transaction.task.updateMany({
+      where: {
+        id: input.taskId,
+        userId: input.userId,
+        version: input.expectedVersion,
+      },
+      data: {
+        blockReason: input.blockReason,
+        blockReasonDetails: input.details,
+        version: { increment: 1 },
+      },
+    });
+    if (update.count !== 1) this.throwVersionConflict();
+    await transaction.taskEvent.create({
+      data: {
+        userId: input.userId,
+        taskId: input.taskId,
+        taskVersion: input.expectedVersion + 1,
+        type: 'ai_suggestion_accepted',
+        metadata: {
+          suggestionId: input.suggestionId,
+          changedFields: ['blockReason', 'blockReasonDetails'],
+        },
+        createdAt: this.clock.now(),
+      },
+    });
+    return toTaskContract(
+      await transaction.task.findUniqueOrThrow({
+        where: { id: input.taskId },
+      }),
+    );
   }
 
   async get(userId: string, taskId: string): Promise<Task> {
@@ -245,10 +342,29 @@ export class TasksService {
 
   async delete(userId: string, taskId: string): Promise<void> {
     try {
-      const deleted = await this.prisma.task.deleteMany({
-        where: { id: taskId, userId },
+      await this.prisma.$transaction(async (transaction) => {
+        const owned = await transaction.task.findFirst({
+          where: { id: taskId, userId },
+          select: { id: true },
+        });
+        if (!owned) this.throwNotFound();
+        const [subtasks, planItems, focusSessions] = await Promise.all([
+          transaction.task.count({ where: { parentTaskId: taskId } }),
+          transaction.dailyPlanItem.count({ where: { taskId } }),
+          transaction.focusSession.count({ where: { taskId } }),
+        ]);
+        if (subtasks + planItems + focusSessions > 0) {
+          this.throwDeleteConflict();
+        }
+        // Assistant context is intentionally coarse-grained in the MVP. Purge
+        // the owner's retained suggestions before deleting any task so no
+        // deleted task text survives inside a plan-context snapshot.
+        await transaction.aiSuggestion.deleteMany({ where: { userId } });
+        const deleted = await transaction.task.deleteMany({
+          where: { id: taskId, userId },
+        });
+        if (deleted.count !== 1) this.throwNotFound();
       });
-      if (deleted.count !== 1) this.throwNotFound();
     } catch (error) {
       if (
         typeof error === 'object' &&
@@ -256,11 +372,7 @@ export class TasksService {
         'code' in error &&
         error.code === 'P2003'
       ) {
-        throw new ConflictException({
-          code: 'TASK_DELETE_CONFLICT',
-          message:
-            'A task used by subtasks, plan history, or focus history cannot be deleted.',
-        });
+        this.throwDeleteConflict();
       }
       throw error;
     }
@@ -402,6 +514,14 @@ export class TasksService {
     throw new ConflictException({
       code: 'TASK_VERSION_CONFLICT',
       message: 'Task changed before the update could be applied.',
+    });
+  }
+
+  private throwDeleteConflict(): never {
+    throw new ConflictException({
+      code: 'TASK_DELETE_CONFLICT',
+      message:
+        'A task used by subtasks, plan history, or focus history cannot be deleted.',
     });
   }
 }

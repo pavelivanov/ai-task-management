@@ -1,0 +1,172 @@
+import {
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+
+import { AppConfig } from '../../config/app-config.service';
+import { PrismaService } from '../../database/prisma.service';
+import { Prisma } from '../../generated/prisma/client';
+import { type Clock, CLOCK } from '../auth/clock';
+import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
+import { AssistantService } from './assistant.service';
+
+@Injectable()
+export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
+  private readonly workerId = randomUUID();
+  private timer: NodeJS.Timeout | null = null;
+  private running = false;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: AppConfig,
+    private readonly assistant: AssistantService,
+    private readonly invalidations: InvalidationStreamService,
+    @Inject(CLOCK) private readonly clock: Clock,
+  ) {}
+
+  onModuleInit(): void {
+    this.timer = setInterval(
+      () => void this.runOnce(),
+      this.config.assistantWorkerIntervalMs,
+    );
+    this.timer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  async runOnce(): Promise<boolean> {
+    if (this.running) return false;
+    this.running = true;
+    try {
+      await this.expireOldSuggestions();
+      const claimed = await this.claimOne();
+      if (!claimed) return false;
+      const result = await this.assistant.process(claimed.id, true);
+      if (result.retryable) {
+        const current = await this.prisma.aiSuggestion.findUnique({
+          where: { id: claimed.id },
+        });
+        if (!current || current.status !== 'running') return true;
+        const canRetry = current.retryCount < current.maxRetries;
+        const retryCount = current.retryCount + 1;
+        const nextAttemptAt = canRetry
+          ? new Date(
+              this.clock.now().getTime() +
+                Math.min(60_000, 2 ** retryCount * 1_000),
+            )
+          : null;
+        await this.prisma.aiSuggestion.update({
+          where: { id: current.id },
+          data: {
+            status: canRetry ? 'queued' : 'failed',
+            retryCount,
+            errorCode: result.errorCode,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            nextAttemptAt,
+            version: { increment: 1 },
+          },
+        });
+        await this.publishCurrent(current.id);
+      }
+      return true;
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async claimOne() {
+    const now = this.clock.now();
+    const candidate = await this.prisma.aiSuggestion.findFirst({
+      where: {
+        expiresAt: { gt: now },
+        OR: [
+          {
+            status: 'queued',
+            OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+          },
+          { status: 'running', leaseExpiresAt: { lte: now } },
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (!candidate) return null;
+    const leaseExpiresAt = new Date(
+      now.getTime() + this.config.assistantLeaseSeconds * 1_000,
+    );
+    const claimed = await this.prisma.aiSuggestion.updateMany({
+      where: {
+        id: candidate.id,
+        version: candidate.version,
+        OR: [
+          {
+            status: 'queued',
+            OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+          },
+          { status: 'running', leaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: {
+        status: 'running',
+        leaseOwner: this.workerId,
+        leaseExpiresAt,
+        nextAttemptAt: null,
+        version: { increment: 1 },
+      },
+    });
+    if (claimed.count !== 1) return null;
+    await this.publishCurrent(candidate.id);
+    return this.prisma.aiSuggestion.findUnique({
+      where: { id: candidate.id },
+    });
+  }
+
+  private async expireOldSuggestions(): Promise<void> {
+    const expired = await this.prisma.aiSuggestion.findMany({
+      where: {
+        expiresAt: { lte: this.clock.now() },
+        status: { in: ['queued', 'running', 'completed', 'failed'] },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    for (const suggestion of expired) {
+      await this.prisma.aiSuggestion.updateMany({
+        where: {
+          id: suggestion.id,
+          status: { in: ['queued', 'running', 'completed', 'failed'] },
+        },
+        data: {
+          status: 'expired',
+          inputContext: { expired: true },
+          output: Prisma.JsonNull,
+          providerRequestId: null,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          nextAttemptAt: null,
+          version: { increment: 1 },
+        },
+      });
+      await this.publishCurrent(suggestion.id);
+    }
+  }
+
+  private async publishCurrent(suggestionId: string): Promise<void> {
+    const suggestion = await this.prisma.aiSuggestion.findUnique({
+      where: { id: suggestionId },
+      select: { id: true, userId: true, version: true },
+    });
+    if (suggestion) {
+      this.invalidations.publish(suggestion.userId, {
+        type: 'suggestion.changed',
+        resourceId: suggestion.id,
+        resourceVersion: suggestion.version,
+      });
+    }
+  }
+}
