@@ -12,7 +12,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17-alpine
@@ -46,8 +46,73 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Use pinned npm
+        run: npm install --global npm@11.9.0
+
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate migration history and replay from empty
+        run: npm run db:migration:check
+
       - name: Run repository verification
         run: npm run verify
+
+      - name: Install deterministic browser
+        run: npm run test:e2e:install:ci
+
+      - name: Run deterministic end-to-end scenarios
+        run: npm run test:e2e
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Exercise production container topology
+        run: npm run container:smoke
+
+  release-artifacts:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - verify
+      - container-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      RELEASE_WEB_API_BASE_URL: ${{ vars.RELEASE_WEB_API_BASE_URL || 'https://api.invalid' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build immutable API image
+        run: docker build --target runtime -f apps/api/Dockerfile -t execution-assistant-api:${IMAGE_TAG} .
+
+      - name: Build immutable migration image
+        run: docker build --target migration -f apps/api/Dockerfile -t execution-assistant-migrate:${IMAGE_TAG} .
+
+      - name: Build immutable web image
+        run: docker build --target runtime -f apps/web/Dockerfile --build-arg "VITE_API_BASE_URL=${RELEASE_WEB_API_BASE_URL}" -t execution-assistant-web:${IMAGE_TAG} .
+
+      - name: Export immutable image archives
+        run: |
+          mkdir release-images
+          docker save --output release-images/api.tar execution-assistant-api:${IMAGE_TAG}
+          docker save --output release-images/migrate.tar execution-assistant-migrate:${IMAGE_TAG}
+          docker save --output release-images/web.tar execution-assistant-web:${IMAGE_TAG}
+
+      - name: Upload immutable image archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-assistant-images-${{ github.sha }}
+          path: release-images/*.tar
+          if-no-files-found: error
+          retention-days: 14

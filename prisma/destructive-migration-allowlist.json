@@ -1,0 +1,9 @@
+{
+  "approvedStatements": [
+    {
+      "migration": "20260720161000_one_open_focus_session/migration.sql",
+      "statement": "DROP INDEX \"one_active_focus_session_per_user\"",
+      "reason": "Replaced in the same migration by the stricter one_open_focus_session_per_user partial unique index; no table data is removed."
+    }
+  ]
+}

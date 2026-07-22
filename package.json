@@ -19,6 +19,8 @@
     "container:build": "docker build --target runtime -f apps/api/Dockerfile -t execution-assistant-api:local . && docker build --target runtime -f apps/web/Dockerfile -t execution-assistant-web:local .",
     "container:smoke": "node scripts/smoke-production-images.mjs",
     "db:generate": "prisma generate",
+    "db:migration:check": "tsx scripts/check-migrations.ts",
+    "db:migration:rehearse": "tsx scripts/rehearse-migrations.ts",
     "db:migrate:test": "tsx scripts/migrate-test-database.ts",
     "db:validate": "prisma validate",
     "db:down": "docker compose down",
@@ -30,12 +32,13 @@
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run db:migrate:test && playwright test",
     "test:e2e:install": "playwright install chromium",
+    "test:e2e:install:ci": "playwright install --with-deps chromium",
     "postinstall": "prisma generate && npm run build --workspace packages/domain && npm run build --workspace packages/contracts",
     "security:matrix": "node scripts/verify-security-matrix.mjs",
     "security:secrets": "node scripts/scan-secrets.mjs",
     "test:integration": "npm run db:migrate:test && npm run test:integration --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "verify": "npm run format:check && npm run security:matrix && npm run security:secrets && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build && npm run compose:validate"
+    "verify": "npm run db:validate && npm run format:check && npm run security:matrix && npm run security:secrets && npm run lint && npm run typecheck && npm test && npm run test:integration && npm run build && npm run compose:validate"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

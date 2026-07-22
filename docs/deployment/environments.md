@@ -100,3 +100,7 @@ state when finished.
 This smoke topology deliberately uses `NODE_ENV=test` and the test-login route
 against production-built JavaScript. It validates artifacts without weakening
 the production configuration, where test login is rejected.
+
+The provider-neutral CI and operational sequence, including immutable main
+artifacts, migration rehearsal, backup gates, deployment order, and rollback
+rules, is documented in [release-procedure.md](./release-procedure.md).

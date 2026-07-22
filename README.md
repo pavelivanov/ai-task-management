@@ -30,12 +30,19 @@ database:
 
 ```bash
 npm run db:validate
+npm run db:migration:check
 npm run db:migrate:test
 ```
 
 `db:migrate:test` intentionally recreates its target. It refuses to operate
 unless `TEST_DATABASE_URL` points to localhost and the database name ends in
-`_test`.
+`_test`. `db:migration:check` applies that same guard while replaying all
+migrations, checking Prisma migration status and live-schema drift, and
+requiring explicit review of destructive SQL. It also compares Prisma's schema
+representation with `prisma/migration-schema-diff.sql`, which records reviewed
+differences caused by hand-authored SQL. Before a release that adds a migration,
+use `npm run db:migration:rehearse` against a sanitized local copy; the release
+gates and rollback policy are in `docs/deployment/release-procedure.md`.
 
 ## Development
 
