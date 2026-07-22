@@ -1,0 +1,72 @@
+name: execution-assistant-production-smoke
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: execution_assistant_smoke
+      POSTGRES_USER: execution_assistant
+      POSTGRES_PASSWORD: local-smoke-only
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U execution_assistant -d execution_assistant_smoke
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migration
+    environment:
+      DATABASE_URL: postgresql://execution_assistant:local-smoke-only@postgres:5432/execution_assistant_smoke
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: postgresql://execution_assistant:local-smoke-only@postgres:5432/execution_assistant_smoke
+      GOOGLE_CLIENT_ID: smoke-google-client-id
+      GOOGLE_CLIENT_SECRET: smoke-google-client-secret
+      GOOGLE_CALLBACK_URL: http://127.0.0.1:${SMOKE_API_PORT:-3300}/auth/google/callback
+      AUTH_ALLOWED_CALLBACK_URLS: http://127.0.0.1:${SMOKE_API_PORT:-3300}/auth/google/callback
+      WEB_APP_URL: http://127.0.0.1:${SMOKE_WEB_PORT:-5180}
+      WEB_ORIGINS: http://127.0.0.1:${SMOKE_WEB_PORT:-5180}
+      LOG_LEVEL: error
+      E2E_AUTH_ENABLED: 'true'
+      ASSISTANT_PROVIDER: disabled
+      PUSH_PROVIDER: disabled
+      ASSISTANT_WORKER_INTERVAL_MS: 60000
+      BEHAVIOR_SCHEDULER_INTERVAL_MS: 300000
+      NOTIFICATION_WORKER_INTERVAL_MS: 60000
+    ports:
+      - '${SMOKE_API_PORT:-3300}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://127.0.0.1:${SMOKE_API_PORT:-3300}
+        VITE_E2E_AUTH_ENABLED: 'true'
+    environment:
+      WEB_PORT: 8080
+    ports:
+      - '${SMOKE_WEB_PORT:-5180}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
