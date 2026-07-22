@@ -15,7 +15,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "compose:validate": "docker compose config --quiet",
+    "compose:validate": "docker compose config --quiet && docker compose -f compose.production-smoke.yaml config --quiet",
+    "container:build": "docker build --target runtime -f apps/api/Dockerfile -t execution-assistant-api:local . && docker build --target runtime -f apps/web/Dockerfile -t execution-assistant-web:local .",
+    "container:smoke": "node scripts/smoke-production-images.mjs",
     "db:generate": "prisma generate",
     "db:migrate:test": "tsx scripts/migrate-test-database.ts",
     "db:validate": "prisma validate",

@@ -52,6 +52,24 @@ process-local pilot metrics are exposed at `GET /health/metrics`. Google login s
 can use `GET /auth/me` and `GET/PATCH /users/me/preferences`. The web app listens
 on `http://localhost:5173`.
 
+Deployment-neutral production images are available for both applications. The
+API image contains only production dependencies plus the compiled API and its
+compiled workspace packages. The web image is a non-root, dependency-free
+static server with SPA fallback, security headers, immutable hashed assets, and
+an explicitly uncached service worker. Build and exercise both images against
+an isolated disposable PostgreSQL instance with:
+
+```bash
+npm run container:build
+npm run container:smoke
+```
+
+The smoke command applies migrations as a separate visible container step,
+checks that both application containers run as non-root, and completes a small
+capture → plan → focus → complete → review loop. See
+`docs/deployment/environments.md` for build arguments, runtime variables, and
+the required frontend/API domain topology.
+
 Authenticated task workflows are available through `GET/POST /tasks`, task
 detail, patch, delete, archive, complete, and history routes. `GET /inbox` plus
 the inbox capture and processing routes support an oldest-first workflow,
