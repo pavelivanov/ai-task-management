@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import type { z } from 'zod';
 
 import { AppConfig } from '../../config/app-config.service';
+import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { type Clock, CLOCK } from '../auth/clock';
@@ -57,6 +58,7 @@ export class AssistantService {
     private readonly dailyPlans: DailyPlansService,
     private readonly reviews: ReviewsService,
     private readonly invalidations: InvalidationStreamService,
+    private readonly metrics: OperationalMetrics,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(LLM_PROVIDER) private readonly provider: LlmProvider,
   ) {}
@@ -135,6 +137,7 @@ export class AssistantService {
     const context = this.asContext(suggestion.inputContext);
     const prompt = ASSISTANT_PROMPTS[suggestion.type];
     let result: LlmProviderResult;
+    const startedAt = performance.now();
     try {
       result = await this.rateLimiter.run(suggestion.userId, () =>
         this.provider.generateStructured({
@@ -157,6 +160,20 @@ export class AssistantService {
         retryable: true,
       };
     }
+    const usage = result.kind === 'success' ? result.usage : {};
+    this.metrics.recordAssistant({
+      promptVersion: suggestion.promptVersion,
+      provider:
+        result.kind === 'success'
+          ? result.provider
+          : this.config.assistantProvider,
+      outcome: result.kind === 'success' ? 'success' : result.code,
+      durationMs: performance.now() - startedAt,
+      inputTokens:
+        typeof usage.inputTokens === 'number' ? usage.inputTokens : null,
+      outputTokens:
+        typeof usage.outputTokens === 'number' ? usage.outputTokens : null,
+    });
 
     if (result.kind === 'success') {
       try {

@@ -7,6 +7,8 @@ import {
 import { randomUUID } from 'node:crypto';
 
 import { AppConfig } from '../../config/app-config.service';
+import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
+import { StructuredLogger } from '../../common/observability/structured-logger.service';
 import { PrismaService } from '../../database/prisma.service';
 import { type Clock, CLOCK } from '../auth/clock';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
@@ -23,6 +25,8 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly config: AppConfig,
     private readonly assistant: AssistantService,
     private readonly invalidations: InvalidationStreamService,
+    private readonly metrics: OperationalMetrics,
+    private readonly logger: StructuredLogger,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -44,7 +48,12 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
     try {
       const claimed = await this.claimOne();
       if (!claimed) return false;
+      const startedAt = performance.now();
+      this.metrics.recordAssistantWorkerClaim(
+        this.clock.now().getTime() - claimed.createdAt.getTime(),
+      );
       const result = await this.assistant.process(claimed.id, true);
+      if (result.errorCode) this.metrics.recordAssistantWorkerFailure();
       if (result.retryable) {
         const current = await this.prisma.aiSuggestion.findUnique({
           where: { id: claimed.id },
@@ -72,6 +81,12 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         await this.publishCurrent(current.id);
       }
+      this.logger.info('assistant.worker.processed', {
+        suggestionId: claimed.id,
+        outcome: result.completed ? 'completed' : 'not_completed',
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       return true;
     } finally {
       this.running = false;

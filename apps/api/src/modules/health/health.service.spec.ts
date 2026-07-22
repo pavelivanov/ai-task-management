@@ -1,14 +1,16 @@
-import { Test } from '@nestjs/testing';
+import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
+import type { PrismaService } from '../../database/prisma.service';
 
 import { HealthService } from './health.service';
 
 describe('HealthService', () => {
-  it('returns the stable API health contract', async () => {
-    const moduleRef = await Test.createTestingModule({
-      providers: [HealthService],
-    }).compile();
+  it('returns the stable API health contract', () => {
+    const service = new HealthService(
+      {} as PrismaService,
+      new OperationalMetrics(),
+    );
 
-    expect(moduleRef.get(HealthService).getStatus()).toEqual({
+    expect(service.getStatus()).toEqual({
       service: 'api',
       status: 'ok',
     });

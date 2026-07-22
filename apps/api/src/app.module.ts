@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { ApiThrottlerGuard } from './common/security/api-throttler.guard';
+import { ObservabilityModule } from './common/observability/observability.module';
 import { AppConfigModule } from './config/app-config.module';
 import { AppConfig } from './config/app-config.service';
 import { AssistantModule } from './modules/assistant/assistant.module';
@@ -22,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
 @Module({
   imports: [
     AppConfigModule,
+    ObservabilityModule,
     ThrottlerModule.forRootAsync({
       imports: [AppConfigModule],
       inject: [AppConfig],

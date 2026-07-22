@@ -14,6 +14,7 @@ interface ErrorBody {
   currentSession?: unknown;
   scheduleAfterWorkAt?: unknown;
   retryAfterSeconds?: number;
+  checks?: Record<string, unknown>;
 }
 
 interface StatusError {
@@ -43,6 +44,7 @@ function normalizeHttpError(exception: HttpException): ErrorBody {
         ...(typeof candidate.retryAfterSeconds === 'number'
           ? { retryAfterSeconds: candidate.retryAfterSeconds }
           : {}),
+        ...(candidate.checks ? { checks: candidate.checks } : {}),
       };
     }
   }
@@ -64,9 +66,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     if (exception instanceof HttpException) {
-      response
-        .status(exception.getStatus())
-        .json(normalizeHttpError(exception));
+      const error = normalizeHttpError(exception);
+      response.locals.errorCode = error.code;
+      response.status(exception.getStatus()).json(error);
       return;
     }
 
@@ -78,12 +80,14 @@ export class ApiExceptionFilter implements ExceptionFilter {
           ? statusError.statusCode
           : null;
     if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+      response.locals.errorCode = 'PAYLOAD_TOO_LARGE';
       response.status(status).json({
         code: 'PAYLOAD_TOO_LARGE',
         message: 'The request body exceeds the configured size limit.',
       });
       return;
     }
+    response.locals.errorCode = 'INTERNAL_ERROR';
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       code: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred.',

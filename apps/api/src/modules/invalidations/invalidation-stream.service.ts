@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 
 import { AppConfig } from '../../config/app-config.service';
+import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
 import { type Clock, CLOCK } from '../auth/clock';
 
 interface Subscriber {
@@ -35,6 +36,7 @@ export class InvalidationStreamService implements OnModuleDestroy {
   constructor(
     private readonly config: AppConfig,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly metrics: OperationalMetrics,
   ) {}
 
   open(userId: string, request: Request, response: Response): void {
@@ -74,6 +76,7 @@ export class InvalidationStreamService implements OnModuleDestroy {
         clearInterval(subscriber.heartbeat);
         current?.delete(id);
         this.subscriberCount -= 1;
+        this.metrics.setSseConnections(this.subscriberCount);
       }
       if (current?.size === 0) this.subscribers.delete(userId);
     };
@@ -91,6 +94,7 @@ export class InvalidationStreamService implements OnModuleDestroy {
     target.set(id, subscriber);
     this.subscribers.set(userId, target);
     this.subscriberCount += 1;
+    this.metrics.setSseConnections(this.subscriberCount);
 
     request.once('aborted', cleanup);
     response.once('close', cleanup);
