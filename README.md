@@ -46,8 +46,9 @@ npm run start:dev --workspace apps/api
 npm run dev --workspace apps/web
 ```
 
-The API listens on `http://localhost:3000`; its stable health endpoint is
-`GET /health`. Google login starts at `GET /auth/google`; authenticated clients
+The API listens on `http://localhost:3000`; its stable liveness endpoint is
+`GET /health`, database/migration readiness is `GET /health/ready`, and bounded
+process-local pilot metrics are exposed at `GET /health/metrics`. Google login starts at `GET /auth/google`; authenticated clients
 can use `GET /auth/me` and `GET/PATCH /users/me/preferences`. The web app listens
 on `http://localhost:5173`.
 
@@ -115,6 +116,15 @@ request-body limit, a global per-IP request limit, tighter authentication IP
 limits, and per-user assistant limits. `TRUST_PROXY_HOPS` defaults to `0`; set it
 only to the exact trusted reverse-proxy hop count so client-supplied forwarding
 headers cannot bypass IP controls.
+
+Application logs are one-line JSON with a generated or validated `X-Request-ID`,
+route template, status, latency, and safe error code. They deliberately exclude
+raw URLs, query values, headers, cookies, request/response bodies, user IDs,
+task content, prompts, and provider payloads. `LOG_LEVEL` accepts `info`, `error`,
+or `silent`. The metrics snapshot uses fixed histograms and capped label sets for
+HTTP latency/errors, PostgreSQL pool state, assistant latency/token totals and
+queue age, SSE connections, and push outcomes; it contains no user content and
+is intentionally local to the MVP's single API process.
 
 Account deletion is available in Settings and through `DELETE /users/me`. It
 requires a session created by a recent sign-in, the exact `DELETE` phrase, the

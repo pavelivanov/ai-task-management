@@ -16,6 +16,7 @@ const environmentSchema = z
     AUTH_ALLOWED_CALLBACK_URLS: z.string().min(1),
     WEB_APP_URL: z.url(),
     WEB_ORIGINS: z.string().min(1),
+    LOG_LEVEL: z.enum(['silent', 'error', 'info']).default('info'),
     E2E_AUTH_ENABLED: z.enum(['true', 'false']).default('false'),
     SESSION_COOKIE_NAME: z
       .string()
@@ -245,6 +246,7 @@ const environmentSchema = z
       allowedCallbackUrls,
       webAppUrl: value.WEB_APP_URL,
       webOrigins,
+      logLevel: value.LOG_LEVEL,
       e2eAuthEnabled: value.E2E_AUTH_ENABLED === 'true',
       sessionCookieName: value.SESSION_COOKIE_NAME,
       sessionTtlDays: value.SESSION_TTL_DAYS,
@@ -296,6 +298,7 @@ export class AppConfig {
   readonly allowedCallbackUrls!: string[];
   readonly webAppUrl!: string;
   readonly webOrigins!: string[];
+  readonly logLevel!: 'silent' | 'error' | 'info';
   readonly e2eAuthEnabled!: boolean;
   readonly sessionCookieName!: string;
   readonly sessionTtlDays!: number;

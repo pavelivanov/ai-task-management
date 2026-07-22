@@ -9,6 +9,7 @@ process.env.AUTH_ALLOWED_CALLBACK_URLS =
   'http://localhost:3000/auth/google/callback';
 process.env.WEB_APP_URL = 'http://localhost:5173';
 process.env.WEB_ORIGINS = 'http://localhost:5173';
+process.env.LOG_LEVEL = 'silent';
 process.env.SSE_HEARTBEAT_SECONDS = '1';
 process.env.ASSISTANT_PROVIDER = 'fake';
 process.env.ASSISTANT_WORKER_INTERVAL_MS = '60000';

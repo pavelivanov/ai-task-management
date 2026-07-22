@@ -7,6 +7,8 @@ import {
 import { randomUUID } from 'node:crypto';
 
 import { AppConfig } from '../../config/app-config.service';
+import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
+import { StructuredLogger } from '../../common/observability/structured-logger.service';
 import { PrismaService } from '../../database/prisma.service';
 import { type Clock, CLOCK } from '../auth/clock';
 import { NotificationsService } from './notifications.service';
@@ -30,6 +32,8 @@ export class NotificationWorkerService
     private readonly notifications: NotificationsService,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(PUSH_GATEWAY) private readonly gateway: PushGateway,
+    private readonly metrics: OperationalMetrics,
+    private readonly logger: StructuredLogger,
   ) {}
 
   onModuleInit(): void {
@@ -61,12 +65,18 @@ export class NotificationWorkerService
         },
       });
       if (!this.gateway.enabled || subscriptions.length === 0) {
+        const outcome = this.gateway.enabled ? 'skipped' : 'disabled';
+        this.metrics.recordPushOutcome(outcome);
         await this.finish(
           claimed.id,
           'skipped',
           null,
           'NO_ACTIVE_SUBSCRIPTION',
         );
+        this.logger.info('notification.worker.processed', {
+          notificationId: claimed.id,
+          outcome,
+        });
         return true;
       }
 
@@ -85,6 +95,7 @@ export class NotificationWorkerService
             deepLink: claimed.deepLink,
           },
         );
+        this.metrics.recordPushOutcome(result.kind);
         results.push({ id: subscription.id, result });
       }
 
@@ -107,6 +118,10 @@ export class NotificationWorkerService
           data: { lastUsedAt: now },
         });
         await this.finish(claimed.id, 'sent', now, null);
+        this.logger.info('notification.worker.processed', {
+          notificationId: claimed.id,
+          outcome: 'sent',
+        });
         return true;
       }
 
@@ -135,6 +150,11 @@ export class NotificationWorkerService
           },
         });
         await this.notifications.publish(claimed.id);
+        this.logger.info('notification.worker.processed', {
+          notificationId: claimed.id,
+          outcome: 'retry',
+          errorCode: transient.code,
+        });
         return true;
       }
       const finalResult = results
@@ -145,6 +165,11 @@ export class NotificationWorkerService
           ? finalResult.code
           : 'DELIVERY_FAILED';
       await this.finish(claimed.id, 'failed', null, finalCode);
+      this.logger.info('notification.worker.processed', {
+        notificationId: claimed.id,
+        outcome: 'failed',
+        errorCode: finalCode,
+      });
       return true;
     } finally {
       this.running = false;
