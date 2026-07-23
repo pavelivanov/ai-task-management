@@ -25,9 +25,11 @@ ENV VITE_E2E_AUTH_ENABLED=$VITE_E2E_AUTH_ENABLED
 RUN npm run build --workspace apps/web
 
 FROM node:24.18.0-alpine AS runtime
+ARG IMAGE_REVISION=unknown
 ENV NODE_ENV=production
 ENV WEB_PORT=8080
 WORKDIR /app
+LABEL org.opencontainers.image.revision=$IMAGE_REVISION
 
 COPY --from=build --chown=node:node /app/apps/web/dist dist
 COPY --chown=node:node apps/web/server.mjs server.mjs

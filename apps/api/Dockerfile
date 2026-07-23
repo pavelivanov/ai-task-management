@@ -25,7 +25,9 @@ RUN npm run build --workspace apps/api
 RUN node -e "require('./apps/api/dist/generated/prisma/client.js')"
 
 FROM build AS migration
+ARG IMAGE_REVISION=unknown
 ENV NODE_ENV=production
+LABEL org.opencontainers.image.revision=$IMAGE_REVISION
 USER node
 CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
@@ -36,9 +38,11 @@ RUN npm ci --omit=dev --ignore-scripts \
   --workspace packages/domain
 
 FROM node:24.18.0-alpine AS runtime
+ARG IMAGE_REVISION=unknown
 ENV NODE_ENV=production
 ENV PORT=3000
 WORKDIR /app
+LABEL org.opencontainers.image.revision=$IMAGE_REVISION
 
 COPY --from=production-dependencies --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=production-dependencies --chown=node:node /app/node_modules node_modules
