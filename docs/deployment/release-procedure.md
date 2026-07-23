@@ -5,6 +5,10 @@ but it must preserve their order and make the migration job and its output
 visible to an operator. Never run `prisma migrate reset` or `prisma db push`
 against staging or production.
 
+Use the concise [operations runbooks](../runbooks/README.md) during a release
+or incident and the [private-pilot checklist](../pilot/checklist.md) as the
+go/no-go record.
+
 ## Release candidate
 
 1. Start from a green `main` workflow. CI installs from the lockfile, validates
