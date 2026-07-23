@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - codex/009-release-completion
 
 permissions:
   contents: read
@@ -80,39 +81,120 @@ jobs:
         run: npm run container:smoke
 
   release-artifacts:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/codex/009-release-completion')
     needs:
       - verify
       - container-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
     env:
       IMAGE_TAG: ${{ github.sha }}
-      RELEASE_WEB_API_BASE_URL: ${{ vars.RELEASE_WEB_API_BASE_URL || 'https://api.invalid' }}
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ${{ github.repository_owner }}
+      RELEASE_WEB_API_BASE_URL: >-
+        ${{ github.ref == 'refs/heads/codex/009-release-completion' &&
+        'https://api.assistant-staging.pavelivanov.info' ||
+        vars.RELEASE_WEB_API_BASE_URL || 'https://api.invalid' }}
     steps:
-      - name: Check out repository
+      - name: Check out release candidate
         uses: actions/checkout@v4
 
-      - name: Build immutable API image
-        run: docker build --target runtime -f apps/api/Dockerfile -t execution-assistant-api:${IMAGE_TAG} .
+      - name: Check out prior main application
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: baseline
 
-      - name: Build immutable migration image
-        run: docker build --target migration -f apps/api/Dockerfile -t execution-assistant-migrate:${IMAGE_TAG} .
+      - name: Record prior application commit
+        run: echo "BASELINE_SHA=$(git -C baseline rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Build immutable web image
-        run: docker build --target runtime -f apps/web/Dockerfile --build-arg "VITE_API_BASE_URL=${RELEASE_WEB_API_BASE_URL}" -t execution-assistant-web:${IMAGE_TAG} .
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export immutable image archives
+      - name: Build and publish prior API image
+        id: baseline-api
+        uses: docker/build-push-action@v6
+        with:
+          context: baseline
+          file: baseline/apps/api/Dockerfile
+          target: runtime
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-api:${{ env.BASELINE_SHA }}
+
+      - name: Build and publish prior web image
+        id: baseline-web
+        uses: docker/build-push-action@v6
+        with:
+          context: baseline
+          file: baseline/apps/web/Dockerfile
+          target: runtime
+          push: true
+          build-args: VITE_API_BASE_URL=${{ env.RELEASE_WEB_API_BASE_URL }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-web:${{ env.BASELINE_SHA }}
+
+      - name: Build and publish immutable API image
+        id: release-api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: runtime
+          push: true
+          build-args: IMAGE_REVISION=${{ env.IMAGE_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-api:${{ env.IMAGE_TAG }}
+
+      - name: Build and publish immutable migration image
+        id: release-migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: migration
+          push: true
+          build-args: IMAGE_REVISION=${{ env.IMAGE_TAG }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-migrate:${{ env.IMAGE_TAG }}
+
+      - name: Build and publish immutable web image
+        id: release-web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          target: runtime
+          push: true
+          build-args: |
+            IMAGE_REVISION=${{ env.IMAGE_TAG }}
+            VITE_API_BASE_URL=${{ env.RELEASE_WEB_API_BASE_URL }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-web:${{ env.IMAGE_TAG }}
+
+      - name: Record immutable release and rollback digests
         run: |
           mkdir release-images
-          docker save --output release-images/api.tar execution-assistant-api:${IMAGE_TAG}
-          docker save --output release-images/migrate.tar execution-assistant-migrate:${IMAGE_TAG}
-          docker save --output release-images/web.tar execution-assistant-web:${IMAGE_TAG}
+          {
+            echo "release_commit=${IMAGE_TAG}"
+            echo "compiled_api_origin=${RELEASE_WEB_API_BASE_URL}"
+            echo "api_digest=${{ steps.release-api.outputs.digest }}"
+            echo "migration_digest=${{ steps.release-migrate.outputs.digest }}"
+            echo "web_digest=${{ steps.release-web.outputs.digest }}"
+            echo "rollback_commit=${BASELINE_SHA}"
+            echo "rollback_api_digest=${{ steps.baseline-api.outputs.digest }}"
+            echo "rollback_web_digest=${{ steps.baseline-web.outputs.digest }}"
+          } > release-images/digests.txt
 
-      - name: Upload immutable image archives
+      - name: Upload immutable digest record
         uses: actions/upload-artifact@v4
         with:
           name: execution-assistant-images-${{ github.sha }}
-          path: release-images/*.tar
+          path: release-images/digests.txt
           if-no-files-found: error
           retention-days: 14
