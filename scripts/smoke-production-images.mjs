@@ -33,6 +33,34 @@ function compose(...arguments_) {
   });
 }
 
+function printComposeDiagnostics() {
+  console.error(
+    `Compose smoke project ${project} failed; service state follows.`,
+  );
+  for (const arguments_ of [
+    ['ps', '--all'],
+    [
+      'logs',
+      '--no-color',
+      '--tail',
+      '200',
+      'postgres',
+      'migrate',
+      'api',
+      'web',
+    ],
+  ]) {
+    try {
+      compose(...arguments_);
+    } catch (error) {
+      console.error(
+        `Could not collect \`docker compose ${arguments_.join(' ')}\` diagnostics.`,
+      );
+      console.error(error);
+    }
+  }
+}
+
 async function expectResponse(url, options, expectedStatus) {
   const response = await fetch(url, options);
   if (response.status !== expectedStatus) {
@@ -148,6 +176,7 @@ try {
   await smoke();
 } catch (error) {
   failure = error;
+  printComposeDiagnostics();
 }
 try {
   compose('down', '--volumes', '--remove-orphans');
