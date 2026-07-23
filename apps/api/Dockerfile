@@ -22,6 +22,7 @@ RUN npm ci
 
 COPY apps/api apps/api
 RUN npm run build --workspace apps/api
+RUN node -e "require('./apps/api/dist/generated/prisma/client.js')"
 
 FROM build AS migration
 ENV NODE_ENV=production
