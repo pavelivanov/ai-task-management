@@ -34,6 +34,7 @@
     "test:e2e:install": "playwright install chromium",
     "test:e2e:install:ci": "playwright install --with-deps chromium",
     "postinstall": "prisma generate && npm run build --workspace packages/domain && npm run build --workspace packages/contracts",
+    "pilot:resource-baseline": "npm run db:migrate:test && npm run build --workspace @execution/api && tsx scripts/run-pilot-resource-baseline.ts",
     "security:matrix": "node scripts/verify-security-matrix.mjs",
     "security:secrets": "node scripts/scan-secrets.mjs",
     "test:integration": "npm run db:migrate:test && npm run test:integration --workspaces --if-present",
