@@ -141,6 +141,22 @@ async function smoke() {
   if (!cookie)
     throw new Error('The smoke login did not issue a session cookie.');
 
+  const assistantSuggestion = await jsonCommand(
+    '/assistant/suggestions',
+    cookie,
+    {
+      type: 'task_extraction',
+      sourceText: 'Prepare pilot notes and then verify the release',
+      idempotencyKey: 'production-smoke-task-extraction',
+    },
+  );
+  if (
+    assistantSuggestion.status !== 'completed' ||
+    assistantSuggestion.type !== 'task_extraction'
+  ) {
+    throw new Error('The fake assistant smoke did not complete.');
+  }
+
   const task = await jsonCommand('/inbox/capture', cookie, {
     title: 'Verify production artifact loop',
     category: 'work',
