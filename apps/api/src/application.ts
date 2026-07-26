@@ -31,5 +31,5 @@ export function configureApplication(app: INestApplication): void {
     origin: config.webOrigins,
   });
   app.enableShutdownHooks();
-  app.useGlobalFilters(new ApiExceptionFilter());
+  app.useGlobalFilters(new ApiExceptionFilter(logger));
 }
