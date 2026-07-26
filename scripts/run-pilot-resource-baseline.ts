@@ -421,7 +421,6 @@ async function main(): Promise<void> {
       peakSseConnections = Math.max(peakSseConnections, activeConnections);
       assert.equal(activeConnections, sseConnectionsPerWave);
 
-      const cleanupStartedAt = performance.now();
       for (const stream of streams) stream.controller.abort();
       await Promise.allSettled(streams.map(({ reader }) => reader.cancel()));
       const cleanupMs = await waitFor(async () => {

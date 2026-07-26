@@ -38,5 +38,17 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['scripts/**/*.{js,mjs,cjs,ts,tsx}'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['apps/web/public/**/*.{js,mjs,cjs,ts,tsx}'],
+    languageOptions: {
+      globals: globals.serviceworker,
+    },
+  },
   prettier,
 );
