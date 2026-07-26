@@ -7,7 +7,7 @@ import { StructuredLogger } from './structured-logger.service';
 const requestIdPattern =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32})$/i;
 
-function routeTemplate(request: Request): string {
+export function requestRouteTemplate(request: Request): string {
   const route = request.route as { path?: unknown } | undefined;
   const suffix = typeof route?.path === 'string' ? route.path : '';
   const template = `${request.baseUrl}${suffix}` || 'unmatched';
@@ -30,7 +30,7 @@ export function requestObservabilityMiddleware(
 
     response.once('finish', () => {
       const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
-      const route = routeTemplate(request);
+      const route = requestRouteTemplate(request);
       metrics.recordRequest({
         method: request.method,
         route,

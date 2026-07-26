@@ -1,11 +1,38 @@
-import type { INestApplication } from '@nestjs/common';
+import { Controller, Get, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module';
 import { configureApplication } from '../src/application';
 import { StructuredLogger } from '../src/common/observability/structured-logger.service';
+import { AppConfig } from '../src/config/app-config.service';
 import { PrismaService } from '../src/database/prisma.service';
+
+const repeatedFaultCanary = 'PRIVATE_REPEATED_ERROR_CANARY';
+const differentFaultCanary = 'PRIVATE_DIFFERENT_ERROR_CANARY';
+let repeatedFaultSequence = 0;
+
+function throwRepeatedFault(): never {
+  repeatedFaultSequence += 1;
+  throw new Error(`${repeatedFaultCanary}_${String(repeatedFaultSequence)}`);
+}
+
+function throwDifferentFault(): never {
+  throw new Error(differentFaultCanary);
+}
+
+@Controller('audit-errors')
+class AuditErrorsController {
+  @Get('repeatable')
+  repeatable(): never {
+    return throwRepeatedFault();
+  }
+
+  @Get('different')
+  different(): never {
+    return throwDifferentFault();
+  }
+}
 
 describe('GET /health', () => {
   let app: INestApplication;
@@ -13,6 +40,7 @@ describe('GET /health', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
+      controllers: [AuditErrorsController],
     }).compile();
 
     app = moduleRef.createNestApplication({ bodyParser: false });
@@ -74,6 +102,67 @@ describe('GET /health', () => {
         checks: { database: 'failed', migrations: 'failed' },
       });
     probe.mockRestore();
+  });
+
+  it('logs stable content-free fingerprints for unhandled errors', async () => {
+    const config = app.get(AppConfig);
+    const previousLogLevel = config.logLevel;
+    const write = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    Object.defineProperty(config, 'logLevel', {
+      configurable: true,
+      value: 'error',
+    });
+
+    try {
+      const firstResponse = await request(app.getHttpServer())
+        .get('/audit-errors/repeatable')
+        .expect(500)
+        .expect({
+          code: 'INTERNAL_ERROR',
+          message: 'An unexpected error occurred.',
+        });
+      await request(app.getHttpServer())
+        .get('/audit-errors/repeatable')
+        .expect(500);
+      await request(app.getHttpServer())
+        .get('/audit-errors/different')
+        .expect(500);
+
+      const output = write.mock.calls.map(([line]) => String(line)).join('');
+      expect(output).not.toContain(repeatedFaultCanary);
+      expect(output).not.toContain(differentFaultCanary);
+      expect(firstResponse.body).not.toHaveProperty('errorFingerprint');
+
+      const records = output
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(records).toHaveLength(3);
+      for (const record of records) {
+        expect(record).toMatchObject({
+          level: 'error',
+          event: 'http.request.failed',
+          requestId: expect.any(String),
+          method: 'GET',
+          errorCode: 'INTERNAL_ERROR',
+          errorFingerprint: expect.stringMatching(/^v1:[0-9a-f]{24}$/),
+        });
+      }
+      expect(records[0]?.route).toBe('/audit-errors/repeatable');
+      expect(records[0]?.errorFingerprint).toBe(records[1]?.errorFingerprint);
+      expect(records[2]?.route).toBe('/audit-errors/different');
+      expect(records[2]?.errorFingerprint).not.toBe(
+        records[0]?.errorFingerprint,
+      );
+    } finally {
+      Object.defineProperty(config, 'logLevel', {
+        configurable: true,
+        value: previousLogLevel,
+      });
+      write.mockRestore();
+    }
   });
 
   it('rejects traffic when the required migration is absent', async () => {

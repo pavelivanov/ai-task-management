@@ -8,6 +8,14 @@ include raw URLs, query values, headers, cookies, authorization, request or
 response bodies, user IDs, email addresses, task text, prompts, push endpoints,
 subscription keys, provider responses, exception messages, or stack traces.
 
+Unhandled 5xx failures also emit an error-level `http.request.failed` record
+with the request ID, method, route template, `INTERNAL_ERROR`, and a stable
+`errorFingerprint`. The fingerprint is a versioned SHA-256 digest of normalized
+stack frames; it groups repeated faults without logging the frames themselves.
+It is operational metadata only and is never included in the HTTP response.
+Exception messages, stack content, and user content remain excluded from both
+the failure record and the normal request-completion record.
+
 `LOG_LEVEL=info` is the operational default. Use `error` when only failures
 should be emitted, and `silent` only in automated tests. Do not enable Prisma
 query logging in production: SQL parameter values can contain user-owned data.

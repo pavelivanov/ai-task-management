@@ -5,7 +5,11 @@ import {
   HttpStatus,
   type ExceptionFilter,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+
+import { fingerprintUnhandledError } from '../observability/error-fingerprint';
+import { requestRouteTemplate } from '../observability/request-observability.middleware';
+import { StructuredLogger } from '../observability/structured-logger.service';
 
 interface ErrorBody {
   code: string;
@@ -63,8 +67,12 @@ function normalizeHttpError(exception: HttpException): ErrorBody {
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
+  constructor(private readonly logger: StructuredLogger) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<Response>();
+    const http = host.switchToHttp();
+    const request = http.getRequest<Request>();
+    const response = http.getResponse<Response>();
     if (exception instanceof HttpException) {
       const error = normalizeHttpError(exception);
       response.locals.errorCode = error.code;
@@ -87,7 +95,16 @@ export class ApiExceptionFilter implements ExceptionFilter {
       });
       return;
     }
+    const errorFingerprint = fingerprintUnhandledError(exception);
     response.locals.errorCode = 'INTERNAL_ERROR';
+    response.locals.errorFingerprint = errorFingerprint;
+    this.logger.errorEvent('http.request.failed', {
+      requestId: response.locals.requestId,
+      method: request.method,
+      route: requestRouteTemplate(request),
+      errorCode: 'INTERNAL_ERROR',
+      errorFingerprint,
+    });
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       code: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred.',

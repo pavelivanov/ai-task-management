@@ -56,6 +56,10 @@ export class StructuredLogger implements LoggerService {
     this.write('info', event, fields);
   }
 
+  errorEvent(event: string, fields: Record<string, unknown> = {}): void {
+    this.write('error', event, fields);
+  }
+
   log(message: unknown, context?: string): void {
     this.write('info', 'application.log', {
       messageType: typeof message,
