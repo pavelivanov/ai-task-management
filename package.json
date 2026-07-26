@@ -29,7 +29,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present && npm run lint:tooling",
-    "lint:tooling": "eslint scripts e2e playwright.config.ts prisma.config.ts apps/web/public --max-warnings=0",
+    "lint:tooling": "eslint scripts e2e playwright.config.ts prisma.config.ts apps/web/public apps/web/*.mjs --max-warnings=0",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run db:migrate:test && playwright test",
     "test:e2e:install": "playwright install chromium",

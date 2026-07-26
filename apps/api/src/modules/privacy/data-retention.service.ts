@@ -21,6 +21,14 @@ export interface RetentionSweepResult {
   deletedPushSubscriptions: number;
 }
 
+const suggestionExpiryBatchSize = 100;
+const maximumSuggestionExpiryBatchesPerSweep = 100;
+
+interface SuggestionExpiryBatchResult {
+  expired: number;
+  selected: number;
+}
+
 @Injectable()
 export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
@@ -64,7 +72,7 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
         this.config.revokedPushRetentionDays,
       );
 
-      const expiredSuggestions = await this.expireSuggestionBatch(now);
+      const expiredSuggestions = await this.expireSuggestions(now);
       const deletedConversationMessages =
         await this.prisma.conversationMessage.deleteMany({
           where: { createdAt: { lte: assistantCutoff } },
@@ -100,12 +108,28 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async expireSuggestionBatch(now: Date): Promise<number> {
+  private async expireSuggestions(now: Date): Promise<number> {
+    let expired = 0;
+    for (
+      let batch = 0;
+      batch < maximumSuggestionExpiryBatchesPerSweep;
+      batch += 1
+    ) {
+      const result = await this.expireSuggestionBatch(now);
+      expired += result.expired;
+      if (result.selected < suggestionExpiryBatchSize) break;
+    }
+    return expired;
+  }
+
+  private async expireSuggestionBatch(
+    now: Date,
+  ): Promise<SuggestionExpiryBatchResult> {
     const suggestions = await this.prisma.aiSuggestion.findMany({
       where: { expiresAt: { lte: now }, status: { not: 'expired' } },
       select: { id: true, userId: true, version: true },
       orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }],
-      take: 100,
+      take: suggestionExpiryBatchSize,
     });
     let count = 0;
     for (const suggestion of suggestions) {
@@ -130,7 +154,7 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
         resourceVersion: suggestion.version + 1,
       });
     }
-    return count;
+    return { expired: count, selected: suggestions.length };
   }
 
   private daysBefore(now: Date, days: number): Date {
