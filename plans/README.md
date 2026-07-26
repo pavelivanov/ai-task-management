@@ -50,7 +50,7 @@ STOP conditions, and update its status here.
 | 006 | Build reviews and the deterministic web execution loop | P0 | XL | 004, 005 | DONE |
 | 007 | Add bounded AI suggestions, confirmations, and evaluations | P1 | XL | 006 | DONE |
 | 008 | Add proactive behavior support and browser notifications | P1 | L | 006, 007 | DONE |
-| 009 | Harden privacy, operations, deployment, and pilot readiness | P1 | L | 001–008 | IN PROGRESS — external staging gate pending |
+| 009 | Harden privacy, operations, deployment, and pilot readiness | P1 | L | 001–008 | DONE |
 | 010 | Stabilize verification gates and close audit findings | P0 | M | 001–008 | DONE |
 
 Effort is relative: M is roughly 1–2 focused days, L is several days, and XL

@@ -175,15 +175,15 @@ without undocumented values; all checklist items have objective evidence.
 
 ## Done criteria
 
-- [ ] All global gates in `plans/README.md` pass from a clean checkout.
-- [ ] Security/privacy matrix has no unowned endpoint or data table.
-- [ ] Account deletion removes associated AI/push context as specified.
-- [ ] Logs/metrics contain no raw prompts, task bodies, tokens, or push keys.
-- [ ] Production artifacts run non-root and pass health/E2E smoke tests.
-- [ ] Migration, backup/restore, rollback, and provider-outage runbooks are rehearsed.
-- [ ] No Redis/microservice was added without a recorded failed threshold.
-- [ ] Pilot success criteria measure outcomes, not a productivity score.
-- [ ] `plans/README.md` status row is updated.
+- [x] All global gates in `plans/README.md` pass from a clean checkout.
+- [x] Security/privacy matrix has no unowned endpoint or data table.
+- [x] Account deletion removes associated AI/push context as specified.
+- [x] Logs/metrics contain no raw prompts, task bodies, tokens, or push keys.
+- [x] Production artifacts run non-root and pass health/E2E smoke tests.
+- [x] Migration, backup/restore, rollback, and provider-outage runbooks are rehearsed.
+- [x] No Redis/microservice was added without a recorded failed threshold.
+- [x] Pilot success criteria measure outcomes, not a productivity score.
+- [x] `plans/README.md` status row is updated.
 
 ## STOP conditions
 
