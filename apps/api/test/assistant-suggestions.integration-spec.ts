@@ -41,7 +41,7 @@ describe('bounded assistant suggestions', () => {
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);
     worker = app.get(AssistantWorkerService);
   });
