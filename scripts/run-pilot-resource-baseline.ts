@@ -19,7 +19,7 @@ const pilotTargets = {
   requestP95Ms: 250,
   requestMaxMs: 1_000,
   sseCleanupMs: 2_000,
-  sseHeapGrowthBytes: 32 * 1024 * 1024,
+  sseRetainedHeapGrowthBytes: 2 * 1024 * 1024,
   databasePoolWaiting: 0,
   assistantQueueDrainMs: 30_000,
 } as const;
@@ -142,6 +142,12 @@ function assertSuccessful(result: HttpResult, context: string): void {
 }
 
 async function main(): Promise<void> {
+  if (typeof globalThis.gc !== 'function') {
+    throw new Error(
+      'Pilot resource baseline requires Node.js to run with --expose-gc.',
+    );
+  }
+  const collectGarbage = globalThis.gc;
   const testDatabaseUrl = requireSafeTestDatabaseUrl();
   Object.assign(process.env, {
     API_RATE_LIMIT_PER_MINUTE: '10000',
@@ -395,6 +401,7 @@ async function main(): Promise<void> {
     );
 
     const sseUser = await login('sse');
+    collectGarbage();
     const sseHeapBefore = process.memoryUsage().heapUsed;
     const cleanupSamples: number[] = [];
     let peakSseConnections = 0;
@@ -433,15 +440,20 @@ async function main(): Promise<void> {
       }, pilotTargets.sseCleanupMs);
       cleanupSamples.push(cleanupMs);
     }
-    const sseHeapGrowthBytes = process.memoryUsage().heapUsed - sseHeapBefore;
-    const sseRetainedHeapGrowthBytes = Math.max(0, sseHeapGrowthBytes);
+    collectGarbage();
+    const sseGcCorrectedHeapDeltaBytes =
+      process.memoryUsage().heapUsed - sseHeapBefore;
+    const sseRetainedHeapGrowthBytes = Math.max(
+      0,
+      sseGcCorrectedHeapDeltaBytes,
+    );
     assert.ok(
       Math.max(...cleanupSamples) <= pilotTargets.sseCleanupMs,
       'SSE cleanup exceeded the pilot target.',
     );
     assert.ok(
-      sseRetainedHeapGrowthBytes <= pilotTargets.sseHeapGrowthBytes,
-      `SSE heap growth exceeded ${String(pilotTargets.sseHeapGrowthBytes)} bytes.`,
+      sseRetainedHeapGrowthBytes <= pilotTargets.sseRetainedHeapGrowthBytes,
+      `SSE retained heap growth exceeded ${String(pilotTargets.sseRetainedHeapGrowthBytes)} bytes.`,
     );
 
     const assistantUser = await login('assistant-queue');
@@ -658,9 +670,9 @@ async function main(): Promise<void> {
         databasePool,
         sse: {
           cleanupMaxMs: round(Math.max(...cleanupSamples)),
-          heapDeltaBytes: sseHeapGrowthBytes,
+          gcCorrectedHeapDeltaBytes: sseGcCorrectedHeapDeltaBytes,
+          gcCorrectedRetainedHeapGrowthBytes: sseRetainedHeapGrowthBytes,
           peakConnections: peakSseConnections,
-          retainedHeapGrowthBytes: sseRetainedHeapGrowthBytes,
         },
       },
       targets: pilotTargets,

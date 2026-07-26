@@ -37,7 +37,7 @@
     "postinstall": "prisma generate && npm run build --workspace packages/domain && npm run build --workspace packages/contracts",
     "ops:backup-restore:rehearse": "node scripts/rehearse-backup-restore.mjs",
     "pilot:rehearse:local": "npm run db:migration:rehearse && npm run ops:backup-restore:rehearse && npm run pilot:resource-baseline && npm run container:smoke",
-    "pilot:resource-baseline": "npm run db:migrate:test && npm run build --workspace @execution/api && tsx scripts/run-pilot-resource-baseline.ts",
+    "pilot:resource-baseline": "npm run db:migrate:test && npm run build --workspace @execution/api && node --expose-gc --import tsx scripts/run-pilot-resource-baseline.ts",
     "security:matrix": "node scripts/verify-security-matrix.mjs",
     "security:secrets": "node scripts/scan-secrets.mjs",
     "test:integration": "npm run db:migrate:test && npm run test:integration --workspaces --if-present",
