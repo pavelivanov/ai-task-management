@@ -30,15 +30,15 @@ on the selected staging provider before opening the pilot.
 
 ## Pilot thresholds
 
-| Signal                                      |           Private-pilot target | Escalation                                                                     |
-| ------------------------------------------- | -----------------------------: | ------------------------------------------------------------------------------ |
-| Task list and current-focus request p95     |                 at most 250 ms | Investigate query plan, pool pressure, and host sizing                         |
-| Individual measured request                 |                    at most 1 s | Treat repeated breaches as release-blocking                                    |
-| Database pool waiting clients               |       0 at representative load | Tune bounded concurrency/pool before adding infrastructure                     |
-| Assistant queue drain/oldest age            |                   at most 30 s | Tune the DB worker; evaluate BullMQ only if DB claiming remains the bottleneck |
-| SSE disconnect cleanup                      |                    at most 2 s | Fix cleanup before scaling replicas                                            |
-| Repeated SSE heap growth                    | at most 32 MiB for eight waves | Investigate retained streams/listeners before pilot                            |
-| Duplicate focus sessions/jobs/notifications |                              0 | Release-blocking correctness failure                                           |
+| Signal                                      |          Private-pilot target | Escalation                                                                     |
+| ------------------------------------------- | ----------------------------: | ------------------------------------------------------------------------------ |
+| Task list and current-focus request p95     |                at most 250 ms | Investigate query plan, pool pressure, and host sizing                         |
+| Individual measured request                 |                   at most 1 s | Treat repeated breaches as release-blocking                                    |
+| Database pool waiting clients               |      0 at representative load | Tune bounded concurrency/pool before adding infrastructure                     |
+| Assistant queue drain/oldest age            |                  at most 30 s | Tune the DB worker; evaluate BullMQ only if DB claiming remains the bottleneck |
+| SSE disconnect cleanup                      |                   at most 2 s | Fix cleanup before scaling replicas                                            |
+| GC-corrected retained SSE heap growth       | at most 2 MiB for eight waves | Investigate retained streams/listeners before pilot                            |
+| Duplicate focus sessions/jobs/notifications |                             0 | Release-blocking correctness failure                                           |
 
 Every list path used by the pilot is bounded: task list returns at most 100
 items by contract (50 in this harness), notifications return at most 50, and
@@ -65,25 +65,30 @@ not a prerequisite for a second replica by itself.
 
 ## Recorded local run
 
-Recorded on 2026-07-23 with Node.js 24.18.0 on Darwin arm64 and local
+Recorded on 2026-07-26 with Node.js 24.18.0 on Darwin arm64 and local
 PostgreSQL:
 
-| Measurement                                          |                                                     Observed |
-| ---------------------------------------------------- | -----------------------------------------------------------: |
-| Task list (2,000 rows, 200 requests, concurrency 20) |                     p50 11.35 ms; p95 27.89 ms; max 30.25 ms |
-| Current focus (200 requests, concurrency 20)         |                      p50 7.44 ms; p95 11.35 ms; max 11.99 ms |
-| 20 competing focus starts                            |            38.52 ms; 1 success, 19 conflicts, 1 open session |
-| 20 competing day closes                              | 72.02 ms; 11 closed responses, 9 version conflicts, 1 review |
-| 20 queued suggestions, 2 worker instances            |         95.20 ms; 20 completed; 0 retries or retained leases |
-| 8 waves of 10 SSE connections                        |    27.28 ms maximum cleanup; 10 peak; 0 retained connections |
-| SSE retained heap growth across all waves            |                   23,248,696 bytes (below the 32 MiB target) |
-| Database pool after the run                          |                                   1 total; 1 idle; 0 waiting |
+| Measurement                                          |                                                      Observed |
+| ---------------------------------------------------- | ------------------------------------------------------------: |
+| Task list (2,000 rows, 200 requests, concurrency 20) |                      p50 13.41 ms; p95 52.47 ms; max 82.85 ms |
+| Current focus (200 requests, concurrency 20)         |                      p50 12.80 ms; p95 23.40 ms; max 26.12 ms |
+| 20 competing focus starts                            |             71.79 ms; 1 success, 19 conflicts, 1 open session |
+| 20 competing day closes                              | 122.98 ms; 11 closed responses, 9 version conflicts, 1 review |
+| 20 queued suggestions, 2 worker instances            |         236.89 ms; 20 completed; 0 retries or retained leases |
+| 8 waves of 10 SSE connections                        |     27.55 ms maximum cleanup; 10 peak; 0 retained connections |
+| GC-corrected retained SSE heap growth                |                        722,864 bytes (below the 2 MiB target) |
+| Database pool after the run                          |                                    1 total; 1 idle; 0 waiting |
+
+The harness now forces garbage collection before both heap samples and refuses
+to run unless Node.js exposes `global.gc`. The prior recorded 23,248,696-byte
+figure was uncollected allocation, not retained growth, and is not comparable to
+the corrected measurement.
 
 PostgreSQL used `tasks_userId_status_createdAt_id_idx` for the task page,
 `one_open_focus_session_per_user` for current focus, and
 `notifications_userId_readAt_createdAt_id_idx` for the notification page. The
 assistant eligibility query used a sequential scan after the queue had drained;
-the table held only the small synthetic run, execution was 0.03 ms, and
+the table held only the small synthetic run, execution was 0.76 ms, and
 `ai_suggestions_status_leaseExpiresAt_createdAt_id_idx` was present. Recheck
 that plan with staging-scale queue history; an increasing scan cost or queue age
 is the evidence needed before changing the queue architecture.
