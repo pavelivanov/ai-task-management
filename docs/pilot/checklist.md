@@ -6,33 +6,33 @@ not assign a productivity score or rank users.
 
 ## Provider and ownership gate
 
-- [ ] Hosting/database provider, region, billing owner, and environment selected.
-- [ ] Same-site HTTPS web/API domains and trusted proxy hops recorded.
-- [ ] Release, database, OAuth, assistant, privacy, and incident owners named.
-- [ ] Managed backup retention, RPO/RTO, and isolated restore drill approved.
-- [ ] Immutable API, migration, and web image digests recorded.
-- [ ] One API replica configured; no unsupported shared SSE/worker topology.
+- [x] Hosting/database provider, region, billing owner, and environment selected.
+- [x] Same-site HTTPS web/API domains and trusted proxy hops recorded.
+- [x] Release, database, OAuth, assistant, privacy, and incident owners named.
+- [x] Managed backup retention, RPO/RTO, and isolated restore drill approved.
+- [x] Immutable API, migration, and web image digests recorded.
+- [x] One API replica configured; no unsupported shared SSE/worker topology.
 
 ## Release gate
 
-- [ ] Green `main` workflow and `npm run verify`.
-- [ ] Configuration reviewed against `docs/deployment/environments.md`.
-- [ ] Pending migrations reviewed and rehearsed on a sanitized copy.
-- [ ] Restorable backup identifier recorded before migration.
-- [ ] Migration job succeeded; migration status and `/health/ready` are healthy.
-- [ ] Web health and compiled API origin are correct.
-- [ ] Rollback digests and decision-maker are available.
+- [x] Green `main` workflow and `npm run verify`.
+- [x] Configuration reviewed against `docs/deployment/environments.md`.
+- [x] Pending migrations reviewed and rehearsed on a sanitized copy.
+- [x] Restorable backup identifier recorded before migration.
+- [x] Migration job succeeded; migration status and `/health/ready` are healthy.
+- [x] Web health and compiled API origin are correct.
+- [x] Rollback digests and decision-maker are available.
 
 ## Synthetic smoke
 
-- [ ] Google OAuth login and logout.
-- [ ] Capture → process → plan → start focus.
-- [ ] Pause/wait/resume and capture a distraction.
-- [ ] Complete or stop → close day → view daily review.
-- [ ] In-app notification and SSE refetch after reconnect.
-- [ ] One assistant suggestion when enabled; deterministic flow when unavailable.
-- [ ] One scoped session revocation.
-- [ ] No prompt/task/user content or credentials in operational logs.
+- [x] Google OAuth login and logout.
+- [x] Capture → process → plan → start focus.
+- [x] Pause/wait/resume and capture a distraction.
+- [x] Complete or stop → close day → view daily review.
+- [x] In-app notification and SSE refetch after reconnect.
+- [x] One assistant suggestion when enabled; deterministic flow when unavailable.
+- [x] One scoped session revocation.
+- [x] No prompt/task/user content or credentials in operational logs.
 
 ## Pilot signals
 
