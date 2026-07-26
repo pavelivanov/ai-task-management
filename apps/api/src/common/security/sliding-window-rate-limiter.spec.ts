@@ -20,4 +20,18 @@ describe('SlidingWindowRateLimiter', () => {
     expect(limiter.consume('first', 1, 60_000, 2_000).allowed).toBe(false);
     expect(limiter.consume('second', 1, 60_000, 2_000).allowed).toBe(true);
   });
+
+  it('prunes stale actors while denying a sustained actor', () => {
+    const limiter = new SlidingWindowRateLimiter();
+    const trackedStarts = (
+      limiter as unknown as { starts: Map<string, number[]> }
+    ).starts;
+
+    expect(limiter.consume('stale', 1, 1_500, 0).allowed).toBe(true);
+    expect(limiter.consume('sustained', 1, 1_500, 1_000).allowed).toBe(true);
+    expect(trackedStarts.has('stale')).toBe(true);
+
+    expect(limiter.consume('sustained', 1, 1_500, 2_000).allowed).toBe(false);
+    expect(trackedStarts.has('stale')).toBe(false);
+  });
 });

@@ -26,8 +26,10 @@ is introduced.
   `REVOKED_PUSH_RETENTION_DAYS` (30 by default). Active push subscriptions remain
   until explicit revocation or account deletion.
 - The sweep runs every `RETENTION_SWEEP_INTERVAL_MS` (one hour by default), is
-  idempotent, bounded to 100 suggestion expirations per pass, and skips an
-  overlapping invocation.
+  idempotent, drains 100-row suggestion-expiry batches, and skips an overlapping
+  invocation. Each sweep stops when a partial batch is reached or after 100
+  batches (10,000 selected suggestions, an effective default ceiling of 240,000
+  per day).
 
 ## Account deletion
 

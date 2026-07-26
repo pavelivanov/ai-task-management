@@ -21,6 +21,7 @@ export class SlidingWindowRateLimiter {
 
     if (recent.length >= limit) {
       this.starts.set(key, recent);
+      this.prune(cutoff);
       return {
         allowed: false,
         retryAfterSeconds: Math.max(
@@ -38,11 +39,11 @@ export class SlidingWindowRateLimiter {
   }
 
   private prune(cutoff: number): void {
-    if (this.starts.size <= this.maximumTrackedKeys) return;
-
     for (const [key, starts] of this.starts) {
       if (starts.at(-1)! <= cutoff) this.starts.delete(key);
     }
+    if (this.starts.size <= this.maximumTrackedKeys) return;
+
     while (this.starts.size > this.maximumTrackedKeys) {
       const oldest = this.starts.keys().next().value as string | undefined;
       if (!oldest) break;
