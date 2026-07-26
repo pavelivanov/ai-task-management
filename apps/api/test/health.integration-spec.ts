@@ -17,7 +17,7 @@ describe('GET /health', () => {
 
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
   });
 
   afterAll(async () => {

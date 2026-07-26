@@ -94,7 +94,7 @@ describe('authentication and user preference boundaries', () => {
 
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureApplication(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);
     sessionCleanup = app.get(SessionCleanupScheduler);
   });
