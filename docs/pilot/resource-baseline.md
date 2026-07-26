@@ -68,16 +68,16 @@ not a prerequisite for a second replica by itself.
 Recorded on 2026-07-26 with Node.js 24.18.0 on Darwin arm64 and local
 PostgreSQL:
 
-| Measurement                                          |                                                      Observed |
-| ---------------------------------------------------- | ------------------------------------------------------------: |
-| Task list (2,000 rows, 200 requests, concurrency 20) |                      p50 13.41 ms; p95 52.47 ms; max 82.85 ms |
-| Current focus (200 requests, concurrency 20)         |                      p50 12.80 ms; p95 23.40 ms; max 26.12 ms |
-| 20 competing focus starts                            |             71.79 ms; 1 success, 19 conflicts, 1 open session |
-| 20 competing day closes                              | 122.98 ms; 11 closed responses, 9 version conflicts, 1 review |
-| 20 queued suggestions, 2 worker instances            |         236.89 ms; 20 completed; 0 retries or retained leases |
-| 8 waves of 10 SSE connections                        |     27.55 ms maximum cleanup; 10 peak; 0 retained connections |
-| GC-corrected retained SSE heap growth                |                        722,864 bytes (below the 2 MiB target) |
-| Database pool after the run                          |                                    1 total; 1 idle; 0 waiting |
+| Measurement                                          |                                                     Observed |
+| ---------------------------------------------------- | -----------------------------------------------------------: |
+| Task list (2,000 rows, 200 requests, concurrency 20) |                     p50 11.98 ms; p95 54.94 ms; max 82.04 ms |
+| Current focus (200 requests, concurrency 20)         |                      p50 9.21 ms; p95 16.52 ms; max 17.95 ms |
+| 20 competing focus starts                            |            61.02 ms; 1 success, 19 conflicts, 1 open session |
+| 20 competing day closes                              | 97.94 ms; 11 closed responses, 9 version conflicts, 1 review |
+| 20 queued suggestions, 2 worker instances            |        154.13 ms; 20 completed; 0 retries or retained leases |
+| 8 waves of 10 SSE connections                        |     2.41 ms maximum cleanup; 10 peak; 0 retained connections |
+| GC-corrected retained SSE heap growth                |                       701,408 bytes (below the 2 MiB target) |
+| Database pool after the run                          |                                   1 total; 1 idle; 0 waiting |
 
 The harness now forces garbage collection before both heap samples and refuses
 to run unless Node.js exposes `global.gc`. The prior recorded 23,248,696-byte
@@ -88,7 +88,7 @@ PostgreSQL used `tasks_userId_status_createdAt_id_idx` for the task page,
 `one_open_focus_session_per_user` for current focus, and
 `notifications_userId_readAt_createdAt_id_idx` for the notification page. The
 assistant eligibility query used a sequential scan after the queue had drained;
-the table held only the small synthetic run, execution was 0.76 ms, and
+the table held only the small synthetic run, execution was 0.73 ms, and
 `ai_suggestions_status_leaseExpiresAt_createdAt_id_idx` was present. Recheck
 that plan with staging-scale queue history; an increasing scan cost or queue age
 is the evidence needed before changing the queue architecture.
