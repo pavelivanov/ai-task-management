@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { taskSchema } from '../tasks/index.js';
+import {
+  taskDueAtSchema,
+  taskSchema,
+  taskTitleSchema,
+} from '../tasks/index.js';
 import { localTimeSchema } from '../users/index.js';
 
 export const localDateSchema = z
@@ -47,6 +51,13 @@ export const carryoverSignalSchema = z.object({
   taskId: z.uuid(),
   count: z.number().int().nonnegative(),
   level: z.enum(['warning', 'diagnosis', 'explicit_choice']).nullable(),
+  resolution: z
+    .object({
+      action: z.enum(['break_down', 'postpone', 'archive', 'recommit']),
+      resolvedAt: z.iso.datetime({ offset: true }),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const dailyPlanItemSchema = z.object({
@@ -160,6 +171,49 @@ export const closeDailyPlanSchema = z
   })
   .strict();
 
+export const resolveCarryoverSchema = z
+  .discriminatedUnion('action', [
+    z
+      .object({
+        action: z.literal('break_down'),
+        expectedPlanVersion: z.number().int().positive(),
+        subtasks: z.array(taskTitleSchema).min(2).max(5),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('postpone'),
+        expectedPlanVersion: z.number().int().positive(),
+        dueAt: taskDueAtSchema,
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('archive'),
+        expectedPlanVersion: z.number().int().positive(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('recommit'),
+        expectedPlanVersion: z.number().int().positive(),
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    if (
+      value.action === 'break_down' &&
+      new Set(value.subtasks.map((title) => title.toLowerCase())).size !==
+        value.subtasks.length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Breakdown steps must be distinct.',
+        path: ['subtasks'],
+      });
+    }
+  });
+
 export const dailyPlanItemIdParamSchema = z.uuid();
 
 export type DailyPlanStatus = z.infer<typeof dailyPlanStatusSchema>;
@@ -176,3 +230,4 @@ export type RemoveDailyPlanItemQuery = z.output<
   typeof removeDailyPlanItemQuerySchema
 >;
 export type CloseDailyPlan = z.output<typeof closeDailyPlanSchema>;
+export type ResolveCarryover = z.output<typeof resolveCarryoverSchema>;

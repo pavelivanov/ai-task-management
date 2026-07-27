@@ -59,6 +59,10 @@ interface PlanResponse {
     taskId: string;
     count: number;
     level: string | null;
+    resolution?: {
+      action: string;
+      resolvedAt: string;
+    } | null;
   }>;
 }
 
@@ -631,6 +635,152 @@ describe('daily planning and carryover boundaries', () => {
         where: { taskId: task.id, type: 'carried_over' },
       }),
     ).toBe(0);
+  });
+
+  it('requires and persists explicit repeated-carryover choices', async () => {
+    const user = await createSession('carryover-choice');
+    const breakDown = await createTask(user, 'Break this down');
+    const postpone = await createTask(user, 'Postpone this');
+    const archive = await createTask(user, 'Archive this');
+    const recommit = await createTask(user, 'Recommit this');
+    let plan = await createTodayPlan(user);
+    for (const task of [breakDown, postpone, archive, recommit]) {
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { carryoverCount: 4 },
+      });
+      plan = await addItem(user, {
+        taskId: task.id,
+        expectedPlanVersion: plan.version,
+      });
+    }
+    const closedResponse = await request(app.getHttpServer())
+      .post('/daily-plans/today/close')
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({ expectedPlanVersion: plan.version })
+      .expect(201);
+    let closed = closedResponse.body as PlanResponse;
+    expect(closed.carryoverSignals).toEqual(
+      expect.arrayContaining(
+        [breakDown, postpone, archive, recommit].map((task) => ({
+          taskId: task.id,
+          count: 5,
+          level: 'explicit_choice',
+        })),
+      ),
+    );
+
+    const breakDownVersion = closed.version;
+    const brokenDownResponse = await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${breakDown.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'break_down',
+        expectedPlanVersion: breakDownVersion,
+        subtasks: ['Define the smallest next step', 'Complete that next step'],
+      })
+      .expect(201);
+    closed = brokenDownResponse.body as PlanResponse;
+    expect(
+      closed.carryoverSignals.find((signal) => signal.taskId === breakDown.id)
+        ?.resolution,
+    ).toMatchObject({ action: 'break_down' });
+    expect(
+      await prisma.task.findMany({
+        where: { userId: user.userId, parentTaskId: breakDown.id },
+        orderBy: { title: 'asc' },
+        select: { title: true, status: true },
+      }),
+    ).toEqual([
+      { title: 'Complete that next step', status: 'backlog' },
+      { title: 'Define the smallest next step', status: 'backlog' },
+    ]);
+
+    await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${breakDown.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'break_down',
+        expectedPlanVersion: breakDownVersion,
+        subtasks: ['Define the smallest next step', 'Complete that next step'],
+      })
+      .expect(201);
+    expect(
+      await prisma.task.count({
+        where: { userId: user.userId, parentTaskId: breakDown.id },
+      }),
+    ).toBe(2);
+
+    await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${postpone.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'postpone',
+        expectedPlanVersion: breakDownVersion,
+        dueAt: '2026-07-30T12:00:00.000Z',
+      })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body.code).toBe('DAILY_PLAN_VERSION_CONFLICT');
+      });
+    const postponedResponse = await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${postpone.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'postpone',
+        expectedPlanVersion: closed.version,
+        dueAt: '2026-07-30T12:00:00.000Z',
+      })
+      .expect(201);
+    closed = postponedResponse.body as PlanResponse;
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: postpone.id } }),
+    ).toMatchObject({ dueAt: new Date('2026-07-30T12:00:00.000Z') });
+
+    const recommittedResponse = await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${recommit.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'recommit',
+        expectedPlanVersion: closed.version,
+      })
+      .expect(201);
+    closed = recommittedResponse.body as PlanResponse;
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: recommit.id } }),
+    ).toMatchObject({ status: 'backlog', carryoverCount: 5 });
+
+    const archivedResponse = await request(app.getHttpServer())
+      .post(`/daily-plans/today/carryovers/${archive.id}/resolve`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({
+        action: 'archive',
+        expectedPlanVersion: closed.version,
+      })
+      .expect(201);
+    closed = archivedResponse.body as PlanResponse;
+    expect(
+      closed.carryoverSignals.find((signal) => signal.taskId === archive.id)
+        ?.resolution,
+    ).toMatchObject({ action: 'archive' });
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: archive.id } }),
+    ).toMatchObject({ status: 'archived', carryoverCount: 5 });
+    expect(
+      await prisma.taskEvent.findFirst({
+        where: { taskId: archive.id, type: 'archived' },
+        select: { metadata: true },
+      }),
+    ).toMatchObject({
+      metadata: expect.objectContaining({ dailyPlanId: closed.id }),
+    });
   });
 
   it('schedules inbox tasks into today and future drafts without duplicates', async () => {

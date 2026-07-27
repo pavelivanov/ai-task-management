@@ -55,6 +55,24 @@ Review signals as separate measures with cohort size and time window. Do not
 combine them into a productivity score, infer causes from behavior, compare
 individual users, or treat time spent as value produced.
 
+## Enrollment and experiment gate
+
+The [private-pilot operating contract](./operating-contract.md) is mandatory
+for the first participant. Before opening enrollment:
+
+- [ ] Record pilot-owner approval for the exact staged commit and image digests.
+- [ ] Confirm the 6-person target, 8-person hard cap, and 14-day participant
+      window.
+- [ ] Send the participant disclosure and retain affirmative consent outside
+      this repository.
+- [ ] Add only consenting accounts to the Google OAuth test-user allowlist.
+- [ ] Confirm the private support channel, incident owner, and one-working-day
+      acknowledgement target.
+- [ ] Confirm daily operational review, day-7 feedback, day-14 exit feedback,
+      and the final decision-memo owner.
+- [ ] Review the pause/stop thresholds and keep enrollment closed if any is
+      already crossed.
+
 ## Go/no-go
 
 Go only when every release/synthetic item passes, no high-severity privacy or
