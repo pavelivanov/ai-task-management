@@ -2,6 +2,7 @@ import {
   type DailyPlan,
   type DailyPlanRole,
   dailyPlanSchema,
+  type ResolveCarryover,
 } from '@execution/contracts';
 
 import { apiRequest, jsonBody } from '../../lib/api-client';
@@ -75,4 +76,18 @@ export function closeTodayPlan(
     method: 'POST',
     ...jsonBody({ expectedPlanVersion }),
   });
+}
+
+export function resolveCarryover(
+  taskId: string,
+  input: ResolveCarryover,
+): Promise<DailyPlan> {
+  return apiRequest(
+    `/daily-plans/today/carryovers/${taskId}/resolve`,
+    dailyPlanSchema,
+    {
+      method: 'POST',
+      ...jsonBody(input),
+    },
+  );
 }

@@ -231,117 +231,126 @@ export class TasksService {
   }
 
   update(userId: string, taskId: string, patch: UpdateTask): Promise<Task> {
-    return this.prisma.$transaction(async (transaction) => {
-      if ('parentTaskId' in patch) {
-        await this.lockTaskHierarchy(transaction, userId);
-      }
-      const current = await transaction.task.findFirst({
-        where: { id: taskId, userId },
-      });
-      if (!current) this.throwNotFound();
+    return this.prisma.$transaction((transaction) =>
+      this.updateInTransaction(transaction, userId, taskId, patch),
+    );
+  }
 
-      const data: Prisma.TaskUncheckedUpdateManyInput = {};
-      const changedFields: string[] = [];
-      if ('title' in patch) {
-        const title = validateTaskTitle(patch.title ?? '');
-        if (title !== current.title) {
-          data.title = title;
-          changedFields.push('title');
-        }
-      }
-      if ('description' in patch) {
-        const description = validateTaskDescription(patch.description);
-        if (description !== current.description) {
-          data.description = description;
-          changedFields.push('description');
-        }
-      }
-      if (patch.category && patch.category !== current.category) {
-        data.category = patch.category;
-        changedFields.push('category');
-      }
-      if (patch.priority && patch.priority !== current.priority) {
-        data.priority = patch.priority;
-        changedFields.push('priority');
-      }
-      if ('estimateMinutes' in patch) {
-        const estimate = validateTaskEstimate(patch.estimateMinutes);
-        if (estimate !== current.estimateMinutes) {
-          data.estimateMinutes = estimate;
-          changedFields.push('estimateMinutes');
-        }
-      }
-      if ('dueAt' in patch) {
-        const dueAt = validateTaskDueAt(
-          patch.dueAt === null || patch.dueAt === undefined
-            ? null
-            : new Date(patch.dueAt),
-        );
-        if (dueAt?.getTime() !== current.dueAt?.getTime()) {
-          data.dueAt = dueAt;
-          changedFields.push('dueAt');
-        }
-      }
-      if ('projectId' in patch && patch.projectId !== current.projectId) {
-        data.projectId = patch.projectId ?? null;
-        changedFields.push('projectId');
-      }
-      if (
-        'parentTaskId' in patch &&
-        patch.parentTaskId !== current.parentTaskId
-      ) {
-        data.parentTaskId = patch.parentTaskId ?? null;
-        changedFields.push('parentTaskId');
-      }
-
-      const projectId =
-        'projectId' in patch ? (patch.projectId ?? null) : current.projectId;
-      const parentTaskId =
-        'parentTaskId' in patch
-          ? (patch.parentTaskId ?? null)
-          : current.parentTaskId;
-      await this.validateAssociations(
-        transaction,
-        userId,
-        projectId,
-        parentTaskId,
-        current.id,
-      );
-      if (changedFields.length === 0) return toTaskContract(current);
-
-      const update = await transaction.task.updateMany({
-        where: { id: current.id, userId, version: current.version },
-        data: { ...data, version: { increment: 1 } },
-      });
-      if (update.count !== 1) this.throwVersionConflict();
-
-      const onlyEstimateChanged =
-        changedFields.length === 1 && changedFields[0] === 'estimateMinutes';
-      const eventType: TaskEventType = onlyEstimateChanged
-        ? 'estimate_changed'
-        : 'updated';
-      const metadata: Prisma.InputJsonObject = onlyEstimateChanged
-        ? {
-            fromMinutes: current.estimateMinutes,
-            toMinutes: patch.estimateMinutes ?? null,
-          }
-        : { changedFields };
-      await transaction.taskEvent.create({
-        data: {
-          userId,
-          taskId: current.id,
-          taskVersion: current.version + 1,
-          type: eventType,
-          metadata,
-          createdAt: this.clock.now(),
-        },
-      });
-      return toTaskContract(
-        await transaction.task.findUniqueOrThrow({
-          where: { id: current.id },
-        }),
-      );
+  async updateInTransaction(
+    transaction: Transaction,
+    userId: string,
+    taskId: string,
+    patch: UpdateTask,
+  ): Promise<Task> {
+    if ('parentTaskId' in patch) {
+      await this.lockTaskHierarchy(transaction, userId);
+    }
+    const current = await transaction.task.findFirst({
+      where: { id: taskId, userId },
     });
+    if (!current) this.throwNotFound();
+
+    const data: Prisma.TaskUncheckedUpdateManyInput = {};
+    const changedFields: string[] = [];
+    if ('title' in patch) {
+      const title = validateTaskTitle(patch.title ?? '');
+      if (title !== current.title) {
+        data.title = title;
+        changedFields.push('title');
+      }
+    }
+    if ('description' in patch) {
+      const description = validateTaskDescription(patch.description);
+      if (description !== current.description) {
+        data.description = description;
+        changedFields.push('description');
+      }
+    }
+    if (patch.category && patch.category !== current.category) {
+      data.category = patch.category;
+      changedFields.push('category');
+    }
+    if (patch.priority && patch.priority !== current.priority) {
+      data.priority = patch.priority;
+      changedFields.push('priority');
+    }
+    if ('estimateMinutes' in patch) {
+      const estimate = validateTaskEstimate(patch.estimateMinutes);
+      if (estimate !== current.estimateMinutes) {
+        data.estimateMinutes = estimate;
+        changedFields.push('estimateMinutes');
+      }
+    }
+    if ('dueAt' in patch) {
+      const dueAt = validateTaskDueAt(
+        patch.dueAt === null || patch.dueAt === undefined
+          ? null
+          : new Date(patch.dueAt),
+      );
+      if (dueAt?.getTime() !== current.dueAt?.getTime()) {
+        data.dueAt = dueAt;
+        changedFields.push('dueAt');
+      }
+    }
+    if ('projectId' in patch && patch.projectId !== current.projectId) {
+      data.projectId = patch.projectId ?? null;
+      changedFields.push('projectId');
+    }
+    if (
+      'parentTaskId' in patch &&
+      patch.parentTaskId !== current.parentTaskId
+    ) {
+      data.parentTaskId = patch.parentTaskId ?? null;
+      changedFields.push('parentTaskId');
+    }
+
+    const projectId =
+      'projectId' in patch ? (patch.projectId ?? null) : current.projectId;
+    const parentTaskId =
+      'parentTaskId' in patch
+        ? (patch.parentTaskId ?? null)
+        : current.parentTaskId;
+    await this.validateAssociations(
+      transaction,
+      userId,
+      projectId,
+      parentTaskId,
+      current.id,
+    );
+    if (changedFields.length === 0) return toTaskContract(current);
+
+    const update = await transaction.task.updateMany({
+      where: { id: current.id, userId, version: current.version },
+      data: { ...data, version: { increment: 1 } },
+    });
+    if (update.count !== 1) this.throwVersionConflict();
+
+    const onlyEstimateChanged =
+      changedFields.length === 1 && changedFields[0] === 'estimateMinutes';
+    const eventType: TaskEventType = onlyEstimateChanged
+      ? 'estimate_changed'
+      : 'updated';
+    const metadata: Prisma.InputJsonObject = onlyEstimateChanged
+      ? {
+          fromMinutes: current.estimateMinutes,
+          toMinutes: patch.estimateMinutes ?? null,
+        }
+      : { changedFields };
+    await transaction.taskEvent.create({
+      data: {
+        userId,
+        taskId: current.id,
+        taskVersion: current.version + 1,
+        type: eventType,
+        metadata,
+        createdAt: this.clock.now(),
+      },
+    });
+    return toTaskContract(
+      await transaction.task.findUniqueOrThrow({
+        where: { id: current.id },
+      }),
+    );
   }
 
   async delete(userId: string, taskId: string): Promise<void> {

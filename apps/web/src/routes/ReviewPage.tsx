@@ -84,7 +84,12 @@ export function ReviewPage() {
       )}
 
       {review.data && (
-        <ReviewContent date={date} review={review.data} userId={user.id} />
+        <ReviewContent
+          key={review.data.id}
+          date={date}
+          review={review.data}
+          userId={user.id}
+        />
       )}
     </div>
   );

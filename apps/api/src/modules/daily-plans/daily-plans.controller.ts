@@ -21,6 +21,9 @@ import {
   dailyPlanItemIdParamSchema,
   type RemoveDailyPlanItemQuery,
   removeDailyPlanItemQuerySchema,
+  type ResolveCarryover,
+  resolveCarryoverSchema,
+  taskIdParamSchema,
   type UpdateDailyPlanItem,
   updateDailyPlanItemSchema,
   type UpdateTodayPlan,
@@ -106,5 +109,16 @@ export class DailyPlansController {
     @Body(new ZodValidationPipe(closeDailyPlanSchema)) input: CloseDailyPlan,
   ): Promise<DailyPlan> {
     return this.dailyPlans.closeToday(user.id, input);
+  }
+
+  @Post('carryovers/:taskId/resolve')
+  @UseGuards(CsrfOriginGuard)
+  resolveCarryover(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('taskId', new ZodValidationPipe(taskIdParamSchema)) taskId: string,
+    @Body(new ZodValidationPipe(resolveCarryoverSchema))
+    input: ResolveCarryover,
+  ): Promise<DailyPlan> {
+    return this.dailyPlans.resolveTodayCarryover(user.id, taskId, input);
   }
 }

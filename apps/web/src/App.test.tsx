@@ -1,5 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,14 +37,14 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function renderApp(path: string) {
   const queryClient = createExecutionQueryClient();
-  render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <App />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return queryClient;
+  return { ...result, queryClient };
 }
 
 describe('authenticated application routing', () => {
@@ -251,6 +257,145 @@ describe('authenticated application routing', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('shows carryover thresholds and records an explicit choice', async () => {
+    const task = (id: string, title: string, carryoverCount: number) => ({
+      id,
+      title,
+      description: null,
+      category: 'work',
+      status: 'backlog',
+      priority: 'normal',
+      estimateMinutes: 30,
+      dueAt: null,
+      projectId: null,
+      parentTaskId: null,
+      blockReason: null,
+      blockReasonDetails: null,
+      carryoverCount,
+      version: 3,
+      createdAt: '2026-07-20T08:00:00.000Z',
+      updatedAt: '2026-07-20T18:00:00.000Z',
+      completedAt: null,
+    });
+    const warningTask = task(
+      '00000000-0000-4000-8000-000000000030',
+      'Check the warning',
+      2,
+    );
+    const diagnosisTask = task(
+      '00000000-0000-4000-8000-000000000031',
+      'Diagnose the blocker',
+      3,
+    );
+    const choiceTask = task(
+      '00000000-0000-4000-8000-000000000032',
+      'Make an explicit choice',
+      5,
+    );
+    const planItem = (
+      taskValue: ReturnType<typeof task>,
+      position: number,
+    ) => ({
+      id: `00000000-0000-4000-8000-00000000004${position}`,
+      taskId: taskValue.id,
+      role: 'optional',
+      plannedStart: null,
+      plannedDurationMinutes: 30,
+      position,
+      addedDuringDay: false,
+      completedDuringDay: false,
+      task: taskValue,
+    });
+    const plan = {
+      id: '00000000-0000-4000-8000-000000000039',
+      date: '2026-07-20',
+      workdayStart: '09:00',
+      workdayEnd: '17:00',
+      status: 'closed',
+      version: 8,
+      createdAt: '2026-07-20T08:00:00.000Z',
+      updatedAt: '2026-07-20T18:00:00.000Z',
+      closedAt: '2026-07-20T18:00:00.000Z',
+      items: [
+        planItem(warningTask, 0),
+        planItem(diagnosisTask, 1),
+        planItem(choiceTask, 2),
+      ],
+      capacity: {
+        availableMinutes: 480,
+        scheduledMinutes: 90,
+        roleCounts: { primary: 0, secondary: 0, optional: 3 },
+      },
+      warnings: [],
+      carryoverSignals: [
+        { taskId: warningTask.id, count: 2, level: 'warning' },
+        { taskId: diagnosisTask.id, count: 3, level: 'diagnosis' },
+        { taskId: choiceTask.id, count: 5, level: 'explicit_choice' },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.endsWith('/auth/me')) return Promise.resolve(jsonResponse(user));
+      if (url.endsWith('/daily-plans/today') && method === 'GET') {
+        return Promise.resolve(jsonResponse(plan));
+      }
+      if (
+        url.endsWith(
+          `/daily-plans/today/carryovers/${choiceTask.id}/resolve`,
+        ) &&
+        method === 'POST'
+      ) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          action: 'recommit',
+          expectedPlanVersion: 8,
+        });
+        return Promise.resolve(
+          jsonResponse({
+            ...plan,
+            version: 9,
+            carryoverSignals: plan.carryoverSignals.map((signal) =>
+              signal.taskId === choiceTask.id
+                ? {
+                    ...signal,
+                    resolution: {
+                      action: 'recommit',
+                      resolvedAt: '2026-07-20T18:05:00.000Z',
+                    },
+                  }
+                : signal,
+            ),
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = renderApp('/today');
+    const page = within(view.container);
+    expect(
+      await page.findByText(/Check whether it still belongs/),
+    ).toBeInTheDocument();
+    expect(page.getByText(/What is blocking progress/)).toBeInTheDocument();
+
+    const choiceForm = page.getByRole('form', {
+      name: 'Resolve carryover for Make an explicit choice',
+    });
+    const browser = userEvent.setup();
+    await browser.selectOptions(
+      within(choiceForm).getByLabelText('Make an explicit choice'),
+      ['recommit'],
+    );
+    await browser.click(
+      within(choiceForm).getByRole('button', { name: 'Confirm choice' }),
+    );
+
+    expect(
+      await page.findByText('Choice recorded: Recommit deliberately.'),
+    ).toBeInTheDocument();
+  });
+
   it('renders deterministic review facts and hides absent assistant content', async () => {
     vi.stubGlobal(
       'fetch',
@@ -295,6 +440,111 @@ describe('authenticated application routing', () => {
     expect(
       screen.queryByLabelText('Assistant recommendation'),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps cached daily-review reflections isolated by date', async () => {
+    const reviews = {
+      '2026-07-20': {
+        id: '00000000-0000-4000-8000-000000000020',
+        date: '2026-07-20',
+        userReflection: 'Reflection for Monday',
+      },
+      '2026-07-21': {
+        id: '00000000-0000-4000-8000-000000000021',
+        date: '2026-07-21',
+        userReflection: 'Reflection for Tuesday',
+      },
+    } as const;
+    const reviewResponse = (date: keyof typeof reviews) => ({
+      ...reviews[date],
+      primaryOutcomeCompleted: true,
+      focusedMinutes: 30,
+      completedPlannedTasks: 1,
+      completedUnplannedTasks: 0,
+      carriedOverTasks: 0,
+      focusSessions: 1,
+      interruptionCount: 0,
+      estimatedFocusMinutes: 30,
+      estimateVarianceMinutes: 0,
+      assistantSummary: null,
+      createdAt: `${date}T18:00:00.000Z`,
+      updatedAt: `${date}T18:00:00.000Z`,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.endsWith('/auth/me')) {
+        return Promise.resolve(jsonResponse(user));
+      }
+      for (const date of Object.keys(reviews) as Array<keyof typeof reviews>) {
+        if (url.endsWith(`/reviews/daily/${date}`) && method === 'GET') {
+          return Promise.resolve(jsonResponse(reviewResponse(date)));
+        }
+        if (url.endsWith(`/reviews/daily/${date}`) && method === 'PATCH') {
+          return Promise.resolve(
+            jsonResponse({
+              ...reviewResponse(date),
+              userReflection: JSON.parse(String(init?.body)).userReflection,
+            }),
+          );
+        }
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = renderApp('/review?date=2026-07-20');
+    const page = within(view.container);
+
+    await page.findByLabelText('Review date');
+    await waitFor(() =>
+      expect(page.getByLabelText('Reflection')).toHaveValue(
+        'Reflection for Monday',
+      ),
+    );
+
+    fireEvent.change(page.getByLabelText('Review date'), {
+      target: { value: '2026-07-21' },
+    });
+    await waitFor(() =>
+      expect(page.getByLabelText('Reflection')).toHaveValue(
+        'Reflection for Tuesday',
+      ),
+    );
+
+    fireEvent.change(page.getByLabelText('Review date'), {
+      target: { value: '2026-07-20' },
+    });
+    await waitFor(() =>
+      expect(page.getByLabelText('Reflection')).toHaveValue(
+        'Reflection for Monday',
+      ),
+    );
+    const mondayReflection = page.getByLabelText('Reflection');
+
+    const browser = userEvent.setup();
+    await browser.clear(mondayReflection);
+    await browser.type(mondayReflection, 'Updated Monday only');
+    await browser.click(page.getByRole('button', { name: 'Save reflection' }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith('/reviews/daily/2026-07-20') &&
+            init?.method === 'PATCH' &&
+            JSON.parse(String(init.body)).userReflection ===
+              'Updated Monday only',
+        ),
+      ).toBe(true),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/reviews/daily/2026-07-21') &&
+          init?.method === 'PATCH',
+      ),
+    ).toBe(false);
   });
 
   it('requires exact account deletion confirmations in settings', async () => {

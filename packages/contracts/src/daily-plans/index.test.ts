@@ -4,6 +4,7 @@ import {
   addDailyPlanItemSchema,
   createTodayPlanSchema,
   localDateSchema,
+  resolveCarryoverSchema,
   updateDailyPlanItemSchema,
 } from './index.js';
 
@@ -47,5 +48,36 @@ describe('daily plan contracts', () => {
         position: 0,
       }),
     ).toEqual({ expectedPlanVersion: 1, position: 0 });
+  });
+
+  it('validates explicit carryover resolutions', () => {
+    expect(
+      resolveCarryoverSchema.parse({
+        action: 'break_down',
+        expectedPlanVersion: 7,
+        subtasks: ['Define the first step', 'Complete the first step'],
+      }),
+    ).toMatchObject({ action: 'break_down', expectedPlanVersion: 7 });
+    expect(() =>
+      resolveCarryoverSchema.parse({
+        action: 'break_down',
+        expectedPlanVersion: 7,
+        subtasks: ['Only one step'],
+      }),
+    ).toThrow();
+    expect(() =>
+      resolveCarryoverSchema.parse({
+        action: 'break_down',
+        expectedPlanVersion: 7,
+        subtasks: ['Same step', 'same step'],
+      }),
+    ).toThrow();
+    expect(() =>
+      resolveCarryoverSchema.parse({
+        action: 'postpone',
+        expectedPlanVersion: 7,
+        dueAt: '2026-07-30',
+      }),
+    ).toThrow();
   });
 });

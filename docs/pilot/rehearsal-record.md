@@ -8,7 +8,10 @@ digests. All technical release, backup/restore, migration, rollback/recovery,
 OAuth, external synthetic, privacy-log, and provider resource gates passed on
 2026-07-27. Pilot enrollment remains closed until the owner explicitly approves
 opening against this release. The approval recorded on 2026-07-25 applies only
-to the earlier historical release.
+to the earlier historical release. Any later application commit requires a new
+green artifact and repetition of the affected provider-backed gates; this
+record must not be read as qualification for subsequent review or carryover
+workflow changes.
 
 ## Pilot-readiness hardening staging qualification — 2026-07-27
 

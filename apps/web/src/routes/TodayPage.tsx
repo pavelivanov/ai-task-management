@@ -18,6 +18,7 @@ import {
   removePlanItem,
   updatePlanItem,
 } from '../features/daily-plan/daily-plan-api';
+import { CarryoverInterventions } from '../features/daily-plan/CarryoverInterventions';
 import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
 import { createAssistantSuggestion } from '../features/assistant/assistant-api';
 import {
@@ -403,6 +404,9 @@ export function TodayPage() {
             ))}
           </ul>
         </section>
+      )}
+      {plan.status === 'closed' && (
+        <CarryoverInterventions plan={plan} userId={user.id} />
       )}
       {message && (
         <p className="inline-message" role="status">

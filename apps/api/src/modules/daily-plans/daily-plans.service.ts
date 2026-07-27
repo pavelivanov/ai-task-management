@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { carryoverSignalSchema } from '@execution/contracts';
 import type {
   AddDailyPlanItem,
   CarryoverSignal,
@@ -13,6 +14,7 @@ import type {
   DailyPlan,
   DailyPlanSuggestionOutput,
   DailyPlanRole,
+  ResolveCarryover,
   UpdateDailyPlanItem,
   UpdateTodayPlan,
 } from '@execution/contracts';
@@ -467,6 +469,119 @@ export class DailyPlansService {
       });
       if (closed.count !== 1) this.throwVersionConflict();
       await this.reviews.generateInTransaction(transaction, userId, date);
+      return plan.id;
+    });
+    return this.presentAndPublish(userId, planId);
+  }
+
+  async resolveTodayCarryover(
+    userId: string,
+    taskId: string,
+    input: ResolveCarryover,
+  ): Promise<DailyPlan> {
+    const context = await this.getPlanningContext(userId);
+    const date = localDateForInstant(this.clock.now(), context.timezone);
+    const planId = await this.prisma.$transaction(async (transaction) => {
+      const plan = await this.findPlanWithItemsAndTasks(
+        transaction,
+        userId,
+        date,
+      );
+      if (plan.status !== 'closed') {
+        throw new ConflictException({
+          code: 'DAILY_PLAN_NOT_CLOSED',
+          message: 'Carryover choices are available after the day is closed.',
+        });
+      }
+      const parsedSignals = carryoverSignalSchema
+        .array()
+        .safeParse(plan.carryoverSignals);
+      if (!parsedSignals.success) {
+        throw new ConflictException({
+          code: 'CARRYOVER_SIGNALS_INVALID',
+          message: 'The recorded carryover choices could not be read.',
+        });
+      }
+      const signalIndex = parsedSignals.data.findIndex(
+        (signal) => signal.taskId === taskId,
+      );
+      const signal = parsedSignals.data[signalIndex];
+      if (!signal) {
+        throw new NotFoundException({
+          code: 'CARRYOVER_SIGNAL_NOT_FOUND',
+          message: 'The carryover choice was not found.',
+        });
+      }
+      if (signal.level !== 'explicit_choice') {
+        throw new BadRequestException({
+          code: 'CARRYOVER_CHOICE_NOT_REQUIRED',
+          message: 'This task does not require an explicit carryover choice.',
+        });
+      }
+      if (signal.resolution) return plan.id;
+      this.assertVersion(plan, input.expectedPlanVersion);
+
+      const item = plan.items.find((candidate) => candidate.taskId === taskId);
+      if (!item) this.throwItemNotFound();
+      switch (input.action) {
+        case 'break_down':
+          for (const title of input.subtasks) {
+            await this.tasks.createInTransaction(transaction, userId, {
+              title,
+              category: item.task.category,
+              priority: item.task.priority,
+              parentTaskId: item.task.id,
+              ...(item.task.projectId
+                ? { projectId: item.task.projectId }
+                : {}),
+            });
+          }
+          break;
+        case 'postpone':
+          if (new Date(input.dueAt).getTime() <= this.clock.now().getTime()) {
+            throw new BadRequestException({
+              code: 'CARRYOVER_POSTPONE_DATE_INVALID',
+              message: 'A postponed task must use a future date.',
+            });
+          }
+          await this.tasks.updateInTransaction(transaction, userId, taskId, {
+            dueAt: input.dueAt,
+          });
+          break;
+        case 'archive':
+          await this.lifecycle.transitionInTransaction(transaction, {
+            taskId,
+            userId,
+            to: 'archived',
+            reason: 'Resolved after repeated carryover.',
+            metadata: { dailyPlanId: plan.id },
+          });
+          break;
+        case 'recommit':
+          break;
+      }
+
+      const resolution = {
+        action: input.action,
+        resolvedAt: this.clock.now().toISOString(),
+      } as const;
+      const carryoverSignals = parsedSignals.data.map((candidate, index) =>
+        index === signalIndex ? { ...candidate, resolution } : candidate,
+      );
+      const updated = await transaction.dailyPlan.updateMany({
+        where: {
+          id: plan.id,
+          userId,
+          status: 'closed',
+          version: plan.version,
+        },
+        data: {
+          carryoverSignals:
+            carryoverSignals as unknown as Prisma.InputJsonArray,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) this.throwVersionConflict();
       return plan.id;
     });
     return this.presentAndPublish(userId, planId);
