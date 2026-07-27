@@ -4,6 +4,12 @@ The pilot tests whether the deterministic workflow helps users complete a
 chosen primary outcome with focused time and less repeated carryover. It does
 not assign a productivity score or rank users.
 
+Every checked release or synthetic gate is scoped to the exact commit and image
+digests in its dated rehearsal record. After application, workflow, runtime, or
+configuration changes, publish a new green `main` artifact and repeat the
+affected provider-backed gates before enrolling another participant. Local
+verification cannot extend an earlier staging GO decision to a later commit.
+
 ## Provider and ownership gate
 
 - [x] Hosting/database provider, region, billing owner, and environment selected.

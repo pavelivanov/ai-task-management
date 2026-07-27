@@ -16,6 +16,8 @@ import {
 } from '@execution/domain';
 
 import { AppConfig } from '../../config/app-config.service';
+import { StructuredLogger } from '../../common/observability/structured-logger.service';
+import { runSafeBackgroundTask } from '../../common/runtime/safe-background-task';
 import { PrismaService } from '../../database/prisma.service';
 import { type Clock, CLOCK } from '../auth/clock';
 import {
@@ -53,12 +55,18 @@ export class BehaviorSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly config: AppConfig,
     private readonly notifications: NotificationsService,
+    private readonly logger: StructuredLogger,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   onModuleInit(): void {
     this.timer = setInterval(
-      () => void this.runOnce(),
+      () =>
+        void runSafeBackgroundTask({
+          failureEvent: 'behavior.scheduler.loop_failed',
+          logger: this.logger,
+          task: () => this.runOnce(),
+        }),
       this.config.behaviorSchedulerIntervalMs,
     );
     this.timer.unref();

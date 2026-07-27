@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 
 import { AppConfig } from '../../config/app-config.service';
+import { StructuredLogger } from '../../common/observability/structured-logger.service';
+import { runSafeBackgroundTask } from '../../common/runtime/safe-background-task';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { AuthService } from '../auth/auth.service';
@@ -39,12 +41,18 @@ export class DataRetentionService implements OnModuleInit, OnModuleDestroy {
     private readonly auth: AuthService,
     private readonly config: AppConfig,
     private readonly invalidations: InvalidationStreamService,
+    private readonly logger: StructuredLogger,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   onModuleInit(): void {
     this.timer = setInterval(
-      () => void this.runOnce(),
+      () =>
+        void runSafeBackgroundTask({
+          failureEvent: 'privacy.retention.loop_failed',
+          logger: this.logger,
+          task: () => this.runOnce(),
+        }),
       this.config.retentionSweepIntervalMs,
     );
     this.timer.unref();

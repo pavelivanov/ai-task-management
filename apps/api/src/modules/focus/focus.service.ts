@@ -14,6 +14,7 @@ import type {
   FocusSessionStatus,
   StartFocusSession,
   StopFocusSession,
+  SwitchWaitingFocusSession,
   Task,
   TaskStatus,
   WaitForFocusSession,
@@ -102,69 +103,60 @@ export class FocusService {
           }
           this.throwActiveConflict(current);
         }
+        return this.activateInTransaction(transaction, userId, input);
+      });
+    } catch (error) {
+      if (!this.isUniqueViolation(error)) throw error;
+      const current = await this.findOpenSummary(this.prisma, userId);
+      if (current?.taskId === input.taskId) {
+        result = { id: current.id, changed: false, planChanged: null };
+      } else if (current) {
+        this.throwActiveConflict(current);
+      } else {
+        throw error;
+      }
+    }
+    return this.presentAndPublish(userId, result);
+  }
 
-        const task = await transaction.task.findFirst({
-          where: { id: input.taskId, userId },
-          select: { id: true, status: true, category: true, priority: true },
+  async switchWaiting(
+    userId: string,
+    sessionId: string,
+    input: SwitchWaitingFocusSession,
+  ): Promise<FocusSession> {
+    let result: FocusMutationResult;
+    try {
+      result = await this.prisma.$transaction(async (transaction) => {
+        const source = await transaction.focusSession.findFirst({
+          where: { id: sessionId, userId },
+          select: { id: true, status: true, taskId: true },
         });
-        if (!task) this.throwTaskNotFound();
-        if (task.status === 'inbox') {
-          throw new ConflictException({
-            code: 'FOCUS_TASK_INBOX',
-            message: 'Process an inbox task before starting focus.',
-          });
+        if (!source) this.throwSessionNotFound();
+        if (source.status === 'stopped') {
+          const current = await this.findOpenSummary(transaction, userId);
+          if (current?.taskId === input.taskId) {
+            return { id: current.id, changed: false, planChanged: null };
+          }
         }
-        if (task.status !== 'backlog' && task.status !== 'planned') {
+        if (source.status !== 'waiting') this.throwSwitchConflict();
+        if (source.taskId === input.taskId) {
           throw new ConflictException({
-            code: 'FOCUS_TASK_NOT_STARTABLE',
-            message: 'Only backlog or planned tasks can start focus.',
+            code: 'FOCUS_SWITCH_SAME_TASK',
+            message: 'Resume the waiting task instead of switching to it.',
           });
         }
 
-        const protectedDecision = await this.protectedStartDecision(
+        await this.transitionInTransaction(
           transaction,
           userId,
-          task,
-        );
-        if (
-          protectedDecision.confirmationRequired &&
-          !input.protectedHoursOverride
-        ) {
-          throw new ConflictException({
-            code: 'PROTECTED_HOURS_CONFIRMATION_REQUIRED',
-            message: 'This is a personal task during protected work hours.',
-            scheduleAfterWorkAt: protectedDecision.scheduleAfterWorkAt,
-          });
-        }
-
-        await this.activationHook.beforeActivate(userId);
-        const now = this.clock.now();
-        const session = await transaction.focusSession.create({
-          data: {
-            userId,
-            taskId: input.taskId,
-            status: 'active',
-            startedAt: now,
-            initialIntent: input.initialIntent ?? null,
-            createdAt: now,
-            updatedAt: now,
-            segments: {
-              create: {
-                sequence: 0,
-                type: 'focused',
-                startedAt: now,
-                createdAt: now,
-              },
-            },
+          source.id,
+          'stopped',
+          {
+            taskStatus: 'waiting',
+            reason: 'Started a short task during the expected wait.',
           },
-        });
-        await this.lifecycle.transitionInTransaction(transaction, {
-          taskId: task.id,
-          userId,
-          to: 'in_progress',
-          metadata: { focusSessionId: session.id },
-        });
-        return { id: session.id, changed: true, planChanged: null };
+        );
+        return this.activateInTransaction(transaction, userId, input);
       });
     } catch (error) {
       if (!this.isUniqueViolation(error)) throw error;
@@ -436,6 +428,75 @@ export class FocusService {
     return { id: session.id, changed: true, planChanged };
   }
 
+  private async activateInTransaction(
+    transaction: Transaction,
+    userId: string,
+    input: StartFocusSession,
+  ): Promise<FocusMutationResult> {
+    const task = await transaction.task.findFirst({
+      where: { id: input.taskId, userId },
+      select: { id: true, status: true, category: true, priority: true },
+    });
+    if (!task) this.throwTaskNotFound();
+    if (task.status === 'inbox') {
+      throw new ConflictException({
+        code: 'FOCUS_TASK_INBOX',
+        message: 'Process an inbox task before starting focus.',
+      });
+    }
+    if (task.status !== 'backlog' && task.status !== 'planned') {
+      throw new ConflictException({
+        code: 'FOCUS_TASK_NOT_STARTABLE',
+        message: 'Only backlog or planned tasks can start focus.',
+      });
+    }
+
+    const protectedDecision = await this.protectedStartDecision(
+      transaction,
+      userId,
+      task,
+    );
+    if (
+      protectedDecision.confirmationRequired &&
+      !input.protectedHoursOverride
+    ) {
+      throw new ConflictException({
+        code: 'PROTECTED_HOURS_CONFIRMATION_REQUIRED',
+        message: 'This is a personal task during protected work hours.',
+        scheduleAfterWorkAt: protectedDecision.scheduleAfterWorkAt,
+      });
+    }
+
+    await this.activationHook.beforeActivate(userId);
+    const now = this.clock.now();
+    const session = await transaction.focusSession.create({
+      data: {
+        userId,
+        taskId: input.taskId,
+        status: 'active',
+        startedAt: now,
+        initialIntent: input.initialIntent ?? null,
+        createdAt: now,
+        updatedAt: now,
+        segments: {
+          create: {
+            sequence: 0,
+            type: 'focused',
+            startedAt: now,
+            createdAt: now,
+          },
+        },
+      },
+    });
+    await this.lifecycle.transitionInTransaction(transaction, {
+      taskId: task.id,
+      userId,
+      to: 'in_progress',
+      metadata: { focusSessionId: session.id },
+    });
+    return { id: session.id, changed: true, planChanged: null };
+  }
+
   private async presentAndPublish(
     userId: string,
     result: FocusMutationResult,
@@ -619,8 +680,15 @@ export class FocusService {
   }): never {
     throw new ConflictException({
       code: 'ACTIVE_FOCUS_SESSION_EXISTS',
-      message: 'Another focus session is already active.',
+      message: 'Another focus session is already open.',
       currentSession: safeCurrentSessionSummary(session),
+    });
+  }
+
+  private throwSwitchConflict(): never {
+    throw new ConflictException({
+      code: 'FOCUS_SWITCH_REQUIRES_WAITING',
+      message: 'Only a waiting focus session can switch to a short task.',
     });
   }
 

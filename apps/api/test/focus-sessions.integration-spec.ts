@@ -394,6 +394,18 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
       task: { status: 'backlog' },
     });
     await request(app.getHttpServer())
+      .post(`/tasks/${task.id}/archive`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({})
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'ACTIVE_FOCUS_SESSION_EXISTS',
+          currentSession: { id: focus.id, status: 'paused' },
+        });
+      });
+    await request(app.getHttpServer())
       .get('/focus/current')
       .set('Cookie', user.cookie)
       .expect(200)
@@ -429,6 +441,18 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
       reason: 'Build running',
     });
     expect(focus.task.status).toBe('waiting');
+    await request(app.getHttpServer())
+      .post(`/tasks/${task.id}/complete`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({})
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'ACTIVE_FOCUS_SESSION_EXISTS',
+          currentSession: { id: focus.id, status: 'waiting' },
+        });
+      });
     clock.advanceMinutes(2);
     focus = await focusCommand(user, focus.id, 'resume');
     clock.advanceMinutes(4);
@@ -436,6 +460,18 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
       reason: 'Needs a decision',
     });
     expect(focus.task.status).toBe('blocked');
+    await request(app.getHttpServer())
+      .post(`/tasks/${task.id}/complete`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({})
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'ACTIVE_FOCUS_SESSION_EXISTS',
+          currentSession: { id: focus.id, status: 'blocked' },
+        });
+      });
     expect(focus.segments.at(-1)).toMatchObject({
       type: 'focused',
       endedAt: '2026-07-20T09:12:00.000Z',
@@ -650,6 +686,92 @@ describe('focus session, time tracking, and invalidation boundaries', () => {
         }),
       ).toMatchObject({ status: status === 'wait' ? 'waiting' : 'blocked' });
     }
+  });
+
+  it('switches waiting work atomically and preserves it when target activation fails', async () => {
+    const user = await createSession('waiting-switch');
+    const waitingTask = await createTask(user, 'Waiting for a build');
+    const shortTask = await createTask(user, 'Review a short note');
+    const waitingFocus = await startFocus(user, waitingTask.id);
+    await focusCommand(user, waitingFocus.id, 'wait', {
+      expectedWaitMinutes: 20,
+      reason: 'Build running',
+    });
+
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_fail_focus_event() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.type = 'started' THEN
+          RAISE EXCEPTION 'injected focus event failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_fail_focus_event_trigger
+      BEFORE INSERT ON task_events
+      FOR EACH ROW EXECUTE FUNCTION test_fail_focus_event()
+    `);
+
+    await request(app.getHttpServer())
+      .post(`/focus/${waitingFocus.id}/switch`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({ taskId: shortTask.id, initialIntent: 'Review the note' })
+      .expect(500);
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER test_fail_focus_event_trigger ON task_events',
+    );
+    await prisma.$executeRawUnsafe('DROP FUNCTION test_fail_focus_event()');
+
+    expect(
+      await prisma.focusSession.findUniqueOrThrow({
+        where: { id: waitingFocus.id },
+      }),
+    ).toMatchObject({ status: 'waiting', endedAt: null });
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: waitingTask.id } }),
+    ).toMatchObject({ status: 'waiting' });
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: shortTask.id } }),
+    ).toMatchObject({ status: 'backlog' });
+
+    const switched = await request(app.getHttpServer())
+      .post(`/focus/${waitingFocus.id}/switch`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({ taskId: shortTask.id, initialIntent: 'Review the note' })
+      .expect(201);
+    expect(switched.body).toMatchObject({
+      taskId: shortTask.id,
+      status: 'active',
+      task: { status: 'in_progress' },
+    });
+    expect(
+      await prisma.focusSession.findUniqueOrThrow({
+        where: { id: waitingFocus.id },
+      }),
+    ).toMatchObject({ status: 'stopped', endedAt: clock.now() });
+    expect(
+      await prisma.task.findUniqueOrThrow({ where: { id: waitingTask.id } }),
+    ).toMatchObject({ status: 'waiting' });
+
+    const retry = await request(app.getHttpServer())
+      .post(`/focus/${waitingFocus.id}/switch`)
+      .set('Cookie', user.cookie)
+      .set('Origin', origin)
+      .send({ taskId: shortTask.id, initialIntent: 'Ignored retry' })
+      .expect(201);
+    expect(retry.body.id).toBe(switched.body.id);
+    expect(
+      await prisma.focusSession.count({
+        where: {
+          userId: user.userId,
+          status: { in: ['active', 'paused', 'waiting', 'blocked'] },
+        },
+      }),
+    ).toBe(1);
   });
 
   it('rolls back session, segment, task, and event changes on failure', async () => {

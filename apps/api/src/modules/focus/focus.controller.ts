@@ -25,6 +25,8 @@ import {
   startFocusSessionSchema,
   type StopFocusSession,
   stopFocusSessionSchema,
+  type SwitchWaitingFocusSession,
+  switchWaitingFocusSessionSchema,
   type Task,
   type WaitForFocusSession,
   waitForFocusSessionSchema,
@@ -92,6 +94,18 @@ export class FocusController {
     input: WaitForFocusSession,
   ): Promise<FocusSession> {
     return this.focus.wait(user.id, sessionId, input);
+  }
+
+  @Post(':sessionId/switch')
+  @UseGuards(CsrfOriginGuard)
+  switchWaiting(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('sessionId', new ZodValidationPipe(focusSessionIdParamSchema))
+    sessionId: string,
+    @Body(new ZodValidationPipe(switchWaitingFocusSessionSchema))
+    input: SwitchWaitingFocusSession,
+  ): Promise<FocusSession> {
+    return this.focus.switchWaiting(user.id, sessionId, input);
   }
 
   @Post('schedule-after-protected-hours')

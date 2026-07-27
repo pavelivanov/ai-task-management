@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - codex/009-release-completion
 
 permissions:
   contents: read
@@ -83,14 +82,14 @@ jobs:
   release-artifacts:
     if: >-
       github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' ||
-      github.ref == 'refs/heads/codex/009-release-completion')
+      github.ref == 'refs/heads/main'
     needs:
       - verify
       - container-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
       packages: write
     env:
@@ -98,21 +97,80 @@ jobs:
       REGISTRY: ghcr.io
       IMAGE_NAMESPACE: ${{ github.repository_owner }}
       RELEASE_WEB_API_BASE_URL: >-
-        ${{ github.ref == 'refs/heads/codex/009-release-completion' &&
-        'https://api.assistant-staging.pavelivanov.info' ||
-        vars.RELEASE_WEB_API_BASE_URL || 'https://api.invalid' }}
+        ${{ vars.RELEASE_WEB_API_BASE_URL || 'https://api.invalid' }}
     steps:
       - name: Check out release candidate
         uses: actions/checkout@v4
 
-      - name: Check out prior main application
-        uses: actions/checkout@v4
+      - name: Find previous successful release record
+        id: previous-release
+        uses: actions/github-script@v7
         with:
-          ref: main
-          path: baseline
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'ci.yml',
+                branch: 'main',
+                event: 'push',
+                status: 'success',
+                per_page: 50,
+              },
+            );
+            for (const run of runs) {
+              if (run.id === context.runId || run.head_sha === context.sha) {
+                continue;
+              }
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id,
+                  per_page: 100,
+                },
+              );
+              const expectedName = `execution-assistant-images-${run.head_sha}`;
+              const artifact = artifacts.find(
+                (candidate) =>
+                  candidate.name === expectedName && !candidate.expired,
+              );
+              if (!artifact) continue;
+              core.setOutput('artifact-name', artifact.name);
+              core.setOutput('run-id', String(run.id));
+              return;
+            }
+            core.setFailed(
+              'No unexpired immutable digest record exists for a previous successful main release.',
+            );
 
-      - name: Record prior application commit
-        run: echo "BASELINE_SHA=$(git -C baseline rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Download previous successful release record
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.previous-release.outputs.artifact-name }}
+          path: previous-release
+          run-id: ${{ steps.previous-release.outputs.run-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate rollback release record
+        shell: bash
+        run: |
+          record="$(find previous-release -name digests.txt -type f -print -quit)"
+          test -n "$record"
+          baseline_sha="$(sed -n 's/^release_commit=//p' "$record")"
+          rollback_api_digest="$(sed -n 's/^api_digest=//p' "$record")"
+          rollback_web_digest="$(sed -n 's/^web_digest=//p' "$record")"
+          [[ "$baseline_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$rollback_api_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$rollback_web_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          {
+            echo "BASELINE_SHA=$baseline_sha"
+            echo "ROLLBACK_API_DIGEST=$rollback_api_digest"
+            echo "ROLLBACK_WEB_DIGEST=$rollback_web_digest"
+          } >> "$GITHUB_ENV"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -120,27 +178,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and publish prior API image
-        id: baseline-api
-        uses: docker/build-push-action@v6
-        with:
-          context: baseline
-          file: baseline/apps/api/Dockerfile
-          target: runtime
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-api:${{ env.BASELINE_SHA }}
-
-      - name: Build and publish prior web image
-        id: baseline-web
-        uses: docker/build-push-action@v6
-        with:
-          context: baseline
-          file: baseline/apps/web/Dockerfile
-          target: runtime
-          push: true
-          build-args: VITE_API_BASE_URL=${{ env.RELEASE_WEB_API_BASE_URL }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/execution-assistant-web:${{ env.BASELINE_SHA }}
 
       - name: Build and publish immutable API image
         id: release-api
@@ -187,8 +224,8 @@ jobs:
             echo "migration_digest=${{ steps.release-migrate.outputs.digest }}"
             echo "web_digest=${{ steps.release-web.outputs.digest }}"
             echo "rollback_commit=${BASELINE_SHA}"
-            echo "rollback_api_digest=${{ steps.baseline-api.outputs.digest }}"
-            echo "rollback_web_digest=${{ steps.baseline-web.outputs.digest }}"
+            echo "rollback_api_digest=${ROLLBACK_API_DIGEST}"
+            echo "rollback_web_digest=${ROLLBACK_WEB_DIGEST}"
           } > release-images/digests.txt
 
       - name: Upload immutable digest record
@@ -197,4 +234,4 @@ jobs:
           name: execution-assistant-images-${{ github.sha }}
           path: release-images/digests.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90

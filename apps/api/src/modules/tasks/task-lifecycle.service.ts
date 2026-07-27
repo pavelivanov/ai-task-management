@@ -59,11 +59,11 @@ export class TaskLifecycleService {
       input.userId,
       input.taskId,
     );
-    const activeFocus = await transaction.focusSession.findFirst({
+    const openFocus = await transaction.focusSession.findFirst({
       where: {
         userId: input.userId,
         taskId: input.taskId,
-        status: 'active',
+        status: { in: ['active', 'paused', 'waiting', 'blocked'] },
       },
       select: {
         id: true,
@@ -73,13 +73,13 @@ export class TaskLifecycleService {
         startedAt: true,
       },
     });
-    if (activeFocus && input.metadata?.focusSessionId !== activeFocus.id) {
+    if (openFocus && input.metadata?.focusSessionId !== openFocus.id) {
       throw new ConflictException({
         code: 'ACTIVE_FOCUS_SESSION_EXISTS',
-        message: 'Use the focus-session command to change the active task.',
+        message: 'Use the focus-session command to change an open focus task.',
         currentSession: {
-          ...activeFocus,
-          startedAt: activeFocus.startedAt.toISOString(),
+          ...openFocus,
+          startedAt: openFocus.startedAt.toISOString(),
         },
       });
     }

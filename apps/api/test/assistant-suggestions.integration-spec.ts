@@ -160,6 +160,35 @@ describe('bounded assistant suggestions', () => {
     expect(await prisma.task.count({ where: { userId: user.userId } })).toBe(2);
   });
 
+  it('collapses concurrent idempotent creates to one suggestion', async () => {
+    const user = await createSession('idempotency-race');
+    await createTask(user, 'A candidate for the plan');
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        request(app.getHttpServer())
+          .post('/assistant/suggestions')
+          .set('Cookie', user.cookie)
+          .set('Origin', origin)
+          .send({
+            type: 'daily_plan',
+            idempotencyKey: 'daily-plan-race-2026-07-21',
+          }),
+      ),
+    );
+
+    expect(responses.every((response) => response.status === 202)).toBe(true);
+    expect(new Set(responses.map((response) => response.body.id)).size).toBe(1);
+    expect(
+      await prisma.aiSuggestion.count({
+        where: {
+          userId: user.userId,
+          type: 'daily_plan',
+          idempotencyKey: 'daily-plan-race-2026-07-21',
+        },
+      }),
+    ).toBe(1);
+  });
+
   it('rejects a suggestion without applying it and detects stale decomposition', async () => {
     const user = await createSession('decompose');
     const task = await createTask(user, 'Prepare launch');

@@ -15,6 +15,8 @@ import {
   createTodayPlan,
   getTodayPlan,
   movePlanItem,
+  removePlanItem,
+  updatePlanItem,
 } from '../features/daily-plan/daily-plan-api';
 import { AssistantSuggestionCard } from '../features/assistant/AssistantSuggestionCard';
 import { createAssistantSuggestion } from '../features/assistant/assistant-api';
@@ -173,6 +175,55 @@ export function TodayPage() {
     onError: async (error) => {
       setMessage(
         isApiError(error) ? error.message : 'Ordering changed elsewhere.',
+      );
+      await refreshPlanAndTasks();
+    },
+  });
+  const update = useMutation({
+    mutationFn: ({
+      item,
+      role,
+      plannedDurationMinutes,
+    }: {
+      item: DailyPlanItem;
+      role: DailyPlanRole;
+      plannedDurationMinutes: number | null;
+    }) => {
+      if (!today.data) throw new Error('Plan unavailable.');
+      return updatePlanItem(item.id, today.data.version, {
+        role,
+        plannedDurationMinutes,
+      });
+    },
+    onSuccess: async (plan) => {
+      queryClient.setQueryData(queryKeys.today(user.id), plan);
+      setMessage('Commitment updated.');
+      await refreshPlanAndTasks();
+    },
+    onError: async (error) => {
+      setMessage(
+        isApiError(error)
+          ? error.message
+          : 'The plan changed. Refreshing it now.',
+      );
+      await refreshPlanAndTasks();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (item: DailyPlanItem) => {
+      if (!today.data) throw new Error('Plan unavailable.');
+      return removePlanItem(item.id, today.data.version);
+    },
+    onSuccess: async (plan) => {
+      queryClient.setQueryData(queryKeys.today(user.id), plan);
+      setMessage('Commitment returned to the backlog.');
+      await refreshPlanAndTasks();
+    },
+    onError: async (error) => {
+      setMessage(
+        isApiError(error)
+          ? error.message
+          : 'The plan changed. Refreshing it now.',
       );
       await refreshPlanAndTasks();
     },
@@ -426,34 +477,94 @@ export function TodayPage() {
                           </button>
                         )}
                       {plan.status !== 'closed' && (
-                        <div
-                          className="reorder-actions"
-                          aria-label={`Reorder ${item.task.title}`}
-                        >
-                          <button
-                            aria-label={`Move ${item.task.title} up`}
-                            disabled={item.position === 0 || move.isPending}
-                            onClick={() =>
-                              move.mutate({ item, position: item.position - 1 })
-                            }
-                            type="button"
+                        <>
+                          <form
+                            aria-label={`Edit ${item.task.title} commitment`}
+                            className="commitment-editor"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              const data = new FormData(event.currentTarget);
+                              const duration = String(
+                                data.get('plannedDurationMinutes') ?? '',
+                              ).trim();
+                              update.mutate({
+                                item,
+                                role: String(data.get('role')) as DailyPlanRole,
+                                plannedDurationMinutes:
+                                  duration === '' ? null : Number(duration),
+                              });
+                            }}
                           >
-                            ↑
-                          </button>
-                          <button
-                            aria-label={`Move ${item.task.title} down`}
-                            disabled={
-                              item.position === plan.items.length - 1 ||
-                              move.isPending
-                            }
-                            onClick={() =>
-                              move.mutate({ item, position: item.position + 1 })
-                            }
-                            type="button"
+                            <label>
+                              <span>Role</span>
+                              <select defaultValue={item.role} name="role">
+                                <option value="primary">Primary</option>
+                                <option value="secondary">Secondary</option>
+                                <option value="optional">Optional</option>
+                              </select>
+                            </label>
+                            <label>
+                              <span>Minutes</span>
+                              <input
+                                defaultValue={item.plannedDurationMinutes ?? ''}
+                                max={10_080}
+                                min={1}
+                                name="plannedDurationMinutes"
+                                placeholder="Unset"
+                                type="number"
+                              />
+                            </label>
+                            <button
+                              className="button"
+                              disabled={update.isPending}
+                              type="submit"
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="text-button"
+                              disabled={remove.isPending}
+                              onClick={() => remove.mutate(item)}
+                              type="button"
+                            >
+                              Remove
+                            </button>
+                          </form>
+                          <div
+                            className="reorder-actions"
+                            aria-label={`Reorder ${item.task.title}`}
                           >
-                            ↓
-                          </button>
-                        </div>
+                            <button
+                              aria-label={`Move ${item.task.title} up`}
+                              disabled={item.position === 0 || move.isPending}
+                              onClick={() =>
+                                move.mutate({
+                                  item,
+                                  position: item.position - 1,
+                                })
+                              }
+                              type="button"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              aria-label={`Move ${item.task.title} down`}
+                              disabled={
+                                item.position === plan.items.length - 1 ||
+                                move.isPending
+                              }
+                              onClick={() =>
+                                move.mutate({
+                                  item,
+                                  position: item.position + 1,
+                                })
+                              }
+                              type="button"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
                   </li>

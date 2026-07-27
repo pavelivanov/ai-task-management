@@ -1,5 +1,15 @@
 # Release rehearsal record
 
+## Qualification scope
+
+The latest provider-backed staging GO below applies only to release commit
+`31f6c2623c781bb7e5131800387b79ce23cc1a3b` and its recorded image digests.
+Repository changes after that release, including the pilot-readiness hardening
+batch, are not staging-qualified by the historical result. After those changes
+merge, the selected green `main` artifact must receive a new dated migration,
+rollback/recovery, OAuth, external synthetic, privacy-log, and provider resource
+record before the private pilot opens.
+
 ## Plan 010 audit-remediation rehearsal — 2026-07-26
 
 Environment: Node.js 24.18.0, npm 11.9.0, Docker Compose 5.1.2, PostgreSQL

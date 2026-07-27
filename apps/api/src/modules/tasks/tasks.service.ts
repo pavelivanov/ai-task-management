@@ -232,6 +232,9 @@ export class TasksService {
 
   update(userId: string, taskId: string, patch: UpdateTask): Promise<Task> {
     return this.prisma.$transaction(async (transaction) => {
+      if ('parentTaskId' in patch) {
+        await this.lockTaskHierarchy(transaction, userId);
+      }
       const current = await transaction.task.findFirst({
         where: { id: taskId, userId },
       });
@@ -475,6 +478,17 @@ export class TasksService {
       }
       candidateId = candidate.parentTaskId;
     }
+  }
+
+  private async lockTaskHierarchy(
+    transaction: Transaction,
+    userId: string,
+  ): Promise<void> {
+    await transaction.$queryRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${'task-hierarchy:' + userId}, 0)
+      )::text
+    `;
   }
 
   private findOwnedTask(userId: string, taskId: string) {

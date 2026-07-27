@@ -1115,6 +1115,38 @@ label > textarea {
   gap: 0.45rem;
 }
 
+.commitment-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.commitment-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: flex-end;
+}
+
+.commitment-editor label {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.commitment-editor input,
+.commitment-editor select {
+  width: 7rem;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
 .reorder-actions button {
   display: grid;
   width: 2.2rem;

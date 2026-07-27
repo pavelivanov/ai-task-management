@@ -102,37 +102,51 @@ export class NotificationsService {
     input: PushSubscriptionInput,
   ): Promise<PushSubscription> {
     const endpointFingerprint = this.fingerprint(input.endpoint);
-    const existing = await this.prisma.pushSubscription.findUnique({
-      where: { endpointFingerprint },
-    });
-    if (existing && existing.userId !== userId) {
-      throw new ConflictException({
-        code: 'PUSH_SUBSCRIPTION_OWNED',
-        message: 'This browser subscription belongs to another account.',
-      });
-    }
     const now = this.clock.now();
     const expirationTime =
       input.expirationTime === null ? null : new Date(input.expirationTime);
-    const subscription = await this.prisma.pushSubscription.upsert({
+    const updateData = {
+      endpoint: input.endpoint,
+      p256dh: input.keys.p256dh,
+      authSecret: input.keys.auth,
+      expirationTime,
+      lastUsedAt: now,
+      revokedAt: null,
+    };
+    const updated = await this.prisma.pushSubscription.updateMany({
+      where: { endpointFingerprint, userId },
+      data: updateData,
+    });
+    if (updated.count === 0) {
+      try {
+        const created = await this.prisma.pushSubscription.create({
+          data: {
+            userId,
+            endpoint: input.endpoint,
+            endpointFingerprint,
+            p256dh: input.keys.p256dh,
+            authSecret: input.keys.auth,
+            expirationTime,
+            lastUsedAt: now,
+          },
+        });
+        return toPushSubscriptionContract(created);
+      } catch (error) {
+        if (!this.isUniqueViolation(error)) throw error;
+        const existing = await this.prisma.pushSubscription.findUnique({
+          where: { endpointFingerprint },
+          select: { userId: true },
+        });
+        if (existing?.userId !== userId) this.throwSubscriptionOwned();
+        const retry = await this.prisma.pushSubscription.updateMany({
+          where: { endpointFingerprint, userId },
+          data: updateData,
+        });
+        if (retry.count !== 1) this.throwSubscriptionOwned();
+      }
+    }
+    const subscription = await this.prisma.pushSubscription.findUniqueOrThrow({
       where: { endpointFingerprint },
-      create: {
-        userId,
-        endpoint: input.endpoint,
-        endpointFingerprint,
-        p256dh: input.keys.p256dh,
-        authSecret: input.keys.auth,
-        expirationTime,
-        lastUsedAt: now,
-      },
-      update: {
-        endpoint: input.endpoint,
-        p256dh: input.keys.p256dh,
-        authSecret: input.keys.auth,
-        expirationTime,
-        lastUsedAt: now,
-        revokedAt: null,
-      },
     });
     return toPushSubscriptionContract(subscription);
   }
@@ -183,6 +197,22 @@ export class NotificationsService {
 
   private fingerprint(endpoint: string): string {
     return createHash('sha256').update(endpoint).digest('hex');
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
+  }
+
+  private throwSubscriptionOwned(): never {
+    throw new ConflictException({
+      code: 'PUSH_SUBSCRIPTION_OWNED',
+      message: 'This browser subscription belongs to another account.',
+    });
   }
 
   private throwNotFound(): never {

@@ -26,6 +26,20 @@ export function startFocus(input: {
   });
 }
 
+export function switchWaitingFocus(
+  sessionId: string,
+  input: {
+    taskId: string;
+    initialIntent?: string;
+    protectedHoursOverride?: boolean;
+  },
+): Promise<FocusSession> {
+  return apiRequest(`/focus/${sessionId}/switch`, focusSessionSchema, {
+    method: 'POST',
+    ...jsonBody(input),
+  });
+}
+
 export function scheduleAfterProtectedHours(
   taskId: string,
 ): Promise<DailyPlan> {

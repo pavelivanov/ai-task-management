@@ -40,6 +40,34 @@ export function movePlanItem(
   });
 }
 
+export function updatePlanItem(
+  itemId: string,
+  expectedPlanVersion: number,
+  patch: {
+    role?: DailyPlanRole;
+    plannedDurationMinutes?: number | null;
+  },
+): Promise<DailyPlan> {
+  return apiRequest(`/daily-plans/today/items/${itemId}`, dailyPlanSchema, {
+    method: 'PATCH',
+    ...jsonBody({ expectedPlanVersion, ...patch }),
+  });
+}
+
+export function removePlanItem(
+  itemId: string,
+  expectedPlanVersion: number,
+): Promise<DailyPlan> {
+  const query = new URLSearchParams({
+    expectedPlanVersion: String(expectedPlanVersion),
+  });
+  return apiRequest(
+    `/daily-plans/today/items/${itemId}?${query.toString()}`,
+    dailyPlanSchema,
+    { method: 'DELETE' },
+  );
+}
+
 export function closeTodayPlan(
   expectedPlanVersion: number,
 ): Promise<DailyPlan> {
