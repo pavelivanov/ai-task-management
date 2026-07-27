@@ -2,13 +2,151 @@
 
 ## Qualification scope
 
-The latest provider-backed staging GO below applies only to release commit
-`31f6c2623c781bb7e5131800387b79ce23cc1a3b` and its recorded image digests.
-Repository changes after that release, including the pilot-readiness hardening
-batch, are not staging-qualified by the historical result. After those changes
-merge, the selected green `main` artifact must receive a new dated migration,
-rollback/recovery, OAuth, external synthetic, privacy-log, and provider resource
-record before the private pilot opens.
+The latest provider-backed staging qualification below applies to release
+commit `9b368435a29fdaac3f1fb8483d4773884888794f` and its recorded image
+digests. All technical release, backup/restore, migration, rollback/recovery,
+OAuth, external synthetic, privacy-log, and provider resource gates passed on
+2026-07-27. Pilot enrollment remains closed until the owner explicitly approves
+opening against this release. The approval recorded on 2026-07-25 applies only
+to the earlier historical release.
+
+## Pilot-readiness hardening staging qualification — 2026-07-27
+
+Status: **PASS — TECHNICAL GO RECOMMENDED; OWNER OPENING APPROVAL PENDING**.
+The evidence window ended at `2026-07-27T15:33:45Z`. All test accounts, local
+backup copies, database tunnels, and disposable restore infrastructure were
+removed after validation.
+
+### Immutable release selection
+
+GitHub Actions run `30275709303`, attempt 2, passed repository verification,
+container smoke, all six deterministic browser journeys, and release artifact
+publication for merged `main`. Attempt 1 exposed that the repository release
+origin variable still held the placeholder `https://api.invalid`; the variable
+was corrected to the staging API origin and the exact run was repeated before
+any candidate image was selected.
+
+Artifact
+`execution-assistant-images-9b368435a29fdaac3f1fb8483d4773884888794f`
+(`8657361060`) recorded:
+
+| Artifact  | Digest                                                                    |
+| --------- | ------------------------------------------------------------------------- |
+| API       | `sha256:71c279fc37ab37c205a9ebf46d859a5c9d50e6ff42380de3ad60d6ada3172776` |
+| Migration | `sha256:5dd928de367747a78507d56a9369985c8b7b7356d1ac4f3ca1b59b1bc60e0cfe` |
+| Web       | `sha256:fbb5a18f26a1bba5f6b029d40834030a05eed105c4c7934dc78a890320fadc40` |
+
+All three candidate registry manifests were independently resolved by digest.
+The web artifact was compiled with
+`https://api.assistant-staging.pavelivanov.info`.
+
+The release artifact's carried rollback fields described the immediately
+preceding `main` commit rather than the release then deployed to staging. They
+were not used for the live rollback. The operator instead resolved and recorded
+the actual prior staging images before deployment:
+
+| Rollback artifact | Digest                                                                    |
+| ----------------- | ------------------------------------------------------------------------- |
+| API               | `sha256:69871b9048232926647a1929ef911c41d4a53d13fbef425ba544703069aa2728` |
+| Web               | `sha256:f6986d679fcb8ca2e5072920c3cee815e2802bfd016ea85ff330dddf15d519d7` |
+
+### Backup, migration, deployment, and recovery
+
+A PostgreSQL 18 custom-format pre-release backup was uploaded at
+`2026-07-27T15:00:47Z` to private Railway bucket
+`execution-assistant-backups-sdgetc`
+(`2a65793c-59a0-492c-815b-76c924875ddf`) at
+`execution-assistant/staging/pre-release/20260727T144552Z.dump`.
+
+| Backup field         | Evidence                                                                      |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Size                 | 68,850 bytes                                                                  |
+| SHA-256              | `00b581f84ef938cd6eaffc4c40e2b13be427160f4f0e301a596aea49f1d35f9f`            |
+| ETag                 | `246d96edf87af87170ff7b81e06b59c8`                                            |
+| Independent download | PASS — size, SHA-256, and byte-for-byte comparison matched                    |
+| Isolated restore     | PASS — PostgreSQL 18 `pg_restore --exit-on-error` completed without output    |
+| Restored integrity   | 8 migration rows; 19 public base tables; 0 unvalidated PostgreSQL constraints |
+
+There were no new migration files relative to the prior staging release. The
+candidate migration image nevertheless ran against staging as deployment
+`f74e5c9b-c90c-4bb8-b421-58b417664637` and reported eight applied migrations
+with none pending. Status deployment
+`ca30e387-c78e-4417-89e4-9be3e93512d0` then reported
+`Database schema is up to date!`.
+
+| Gate                      | Deployment                             | Result                                                     |
+| ------------------------- | -------------------------------------- | ---------------------------------------------------------- |
+| Candidate API             | `c70f7691-6700-4fc2-a590-fdfaf1b84af2` | PASS — candidate digest became ready                       |
+| Candidate web             | `c2a025c8-87c3-4b04-890a-00e575213519` | PASS — health and compiled API origin were correct         |
+| Actual prior API rollback | `0243687d-1968-485c-98a0-af2fc12d1a82` | PASS — prior digest remained ready against the live schema |
+| Actual prior web rollback | `40ec428b-ed64-45ab-ab1f-26d6669ffd48` | PASS — prior digest returned healthy                       |
+| Candidate API recovery    | `c18bb9ce-9699-424d-a0d9-662a8e0b8dae` | PASS — candidate digest restored and ready                 |
+| Candidate web recovery    | `bb3a4865-2d30-43df-a6e7-3a5a06609f79` | PASS — candidate digest restored and healthy               |
+
+The final public checks returned 200 from web `/health` and API
+`/health/ready`; the API reported database and migrations `ok`. Staging
+remained one Amsterdam API replica, one Amsterdam web replica, one managed
+PostgreSQL instance, and an ephemeral migration job.
+
+### External synthetic, resource, and privacy evidence
+
+External run `1785165589304-3f198c16` used two random sessions for one
+disposable synthetic user and exercised the public API:
+
+| Gate                                           | Result                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Two-session authentication                     | PASS — both sessions resolved the same synthetic owner                                      |
+| Capture, process, plan, and plan-item controls | PASS — add, role/duration update, and removal were authoritative                            |
+| Focus lifecycle and concurrency rule           | PASS — start, pause, conflict, resume, wait, distraction, and complete behaved as specified |
+| Assistant unavailable and idempotency          | PASS — stable `provider_disabled`; two identical creates produced one suggestion row        |
+| Notification, SSE, reconnect, and refetch      | PASS — all required invalidations arrived and authoritative state matched                   |
+| Close day and review                           | PASS — the day closed and the daily review was generated                                    |
+| Scoped session revocation                      | PASS — first-session logout did not revoke the second session                               |
+| Post-run invariants and cleanup                | PASS — no open focus, duplicate suggestion/notification, or retained synthetic user         |
+
+The first external wall-clock task-list sample included network transit and
+reported p95 277.95 ms with one 1,365.36 ms maximum. A focused repeat produced
+p95 values of 293.73, 212.48, and 180.93 ms, with maxima of 657.47, 633.63,
+and 573.47 ms; the individual one-second breach did not repeat. The equivalent
+PostgreSQL query executed in 0.43 ms.
+
+Provider and process-local metrics establish the release decision:
+
+| Signal                                     | Observed                                                                   |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| Task list                                  | 1,040/1,040 process measurements at most 100 ms; provider p95 12 ms; 0 5xx |
+| Current focus                              | 600/600 process measurements at most 100 ms; provider p95 9 ms; 0 5xx      |
+| Database pool                              | 2 total, 2 idle, 0 waiting after representative load                       |
+| SSE disconnect cleanup                     | active count 1 → 2 → 1 in 1,319.24 ms, inside the two-second target        |
+| API CPU over the 45-minute evidence window | 0.0046 vCPU average; 0.0511 vCPU maximum against an 8 vCPU limit           |
+| API memory over the evidence window        | 117.49 MiB average; 239.41 MiB maximum against an 8,192 MiB limit          |
+
+The pre-existing SSE baseline of one represented another open client; the
+bounded synthetic proved that its own connection incremented and returned to
+that exact baseline. The endpoint-specific request metrics exclude long-lived
+SSE duration, which makes the aggregate HTTP latency percentile unsuitable for
+this gate.
+
+Bounded candidate log queries found zero matches for every synthetic run
+canary, `authorization`, `cookie`, `sessionToken`, and `tokenHash`; zero warning
+or error entries; and zero HTTP 5xx responses during qualification.
+
+### Google OAuth and decision
+
+A fresh browser smoke used the real Google provider and selected staging
+client:
+
+1. The existing authenticated session rendered `/today`.
+2. Logout returned to `/login`.
+3. `Continue with Google` opened the provider account chooser with the exact
+   staging client and callback.
+4. Account selection completed the callback, returned to `/today`, and rendered
+   the authenticated workspace.
+
+Technical result: **PASS — GO recommended** for the exact commit and digests
+above. The only remaining action before enrolling a participant is explicit
+pilot-owner approval of this release; until it is recorded, pilot enrollment
+must remain closed.
 
 ## Plan 010 audit-remediation rehearsal — 2026-07-26
 
