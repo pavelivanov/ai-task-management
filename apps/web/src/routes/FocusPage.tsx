@@ -8,7 +8,7 @@ import {
   captureFocusDistraction,
   commandFocus,
   getCurrentFocus,
-  startFocus,
+  switchWaitingFocus,
 } from '../features/focus/focus-api';
 import { getWaitingSuggestions } from '../features/behavior/behavior-api';
 import {
@@ -92,13 +92,9 @@ export function FocusPage() {
     },
   });
   const startWaitingTask = useMutation({
-    mutationFn: async (task: Task) => {
+    mutationFn: (task: Task) => {
       if (!focus.data) throw new Error('Focus session unavailable.');
-      await commandFocus(focus.data.id, 'stop', {
-        taskStatus: 'waiting',
-        reason: 'Started a short task during the expected wait.',
-      });
-      return startFocus({
+      return switchWaitingFocus(focus.data.id, {
         taskId: task.id,
         initialIntent: task.description ?? task.title,
       });

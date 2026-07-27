@@ -92,23 +92,41 @@ export class AssistantService {
     const serializableContext = JSON.parse(
       JSON.stringify(context),
     ) as Prisma.InputJsonObject;
-    const suggestion = await this.prisma.aiSuggestion.create({
-      data: {
-        userId,
-        type: request.type,
-        status: asynchronous ? 'queued' : 'running',
-        schemaVersion: prompt.schemaVersion,
-        promptVersion: prompt.version,
-        inputContext: serializableContext,
-        inputContextHash: createHash('sha256')
-          .update(JSON.stringify(serializableContext))
-          .digest('hex'),
-        idempotencyKey: request.idempotencyKey ?? null,
-        expiresAt,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
+    let suggestion;
+    try {
+      suggestion = await this.prisma.aiSuggestion.create({
+        data: {
+          userId,
+          type: request.type,
+          status: asynchronous ? 'queued' : 'running',
+          schemaVersion: prompt.schemaVersion,
+          promptVersion: prompt.version,
+          inputContext: serializableContext,
+          inputContextHash: createHash('sha256')
+            .update(JSON.stringify(serializableContext))
+            .digest('hex'),
+          idempotencyKey: request.idempotencyKey ?? null,
+          expiresAt,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    } catch (error) {
+      if (!request.idempotencyKey || !this.isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.prisma.aiSuggestion.findUnique({
+        where: {
+          userId_type_idempotencyKey: {
+            userId,
+            type: request.type,
+            idempotencyKey: request.idempotencyKey,
+          },
+        },
+      });
+      if (!existing) throw error;
+      return toAssistantSuggestionContract(existing);
+    }
     this.publish(suggestion.userId, suggestion.id, suggestion.version);
 
     if (asynchronous) return toAssistantSuggestionContract(suggestion);
@@ -484,5 +502,14 @@ export class AssistantService {
       code: 'ASSISTANT_SUGGESTION_STALE',
       message: 'Referenced task state changed. Generate a fresh suggestion.',
     });
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 }

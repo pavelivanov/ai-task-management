@@ -101,7 +101,11 @@ describe('deterministic behavior and notification boundaries', () => {
     return response.body as { id: string; status: string };
   }
 
-  function subscribe(actor: TestSession, endpoint: string) {
+  function subscribe(
+    actor: TestSession,
+    endpoint: string,
+    keys = { p256dh: 'public-encryption-key', auth: 'auth-secret' },
+  ) {
     return request(app.getHttpServer())
       .post('/notifications/push/subscriptions')
       .set('Cookie', actor.cookie)
@@ -109,7 +113,7 @@ describe('deterministic behavior and notification boundaries', () => {
       .send({
         endpoint,
         expirationTime: null,
-        keys: { p256dh: 'public-encryption-key', auth: 'auth-secret' },
+        keys,
       });
   }
 
@@ -352,6 +356,76 @@ describe('deterministic behavior and notification boundaries', () => {
       deliveryStatus: 'failed',
       lastErrorCode: '410',
     });
+  });
+
+  it('keeps a concurrently registered push endpoint bound to one owner', async () => {
+    const actor = await session('push-race-a');
+    const other = await session('push-race-b');
+    const endpoint = 'https://push.example.test/concurrent-owner';
+    const responses = await Promise.all([
+      subscribe(actor, endpoint, {
+        p256dh: 'actor-public-key',
+        auth: 'actor-auth-secret',
+      }),
+      subscribe(other, endpoint, {
+        p256dh: 'other-public-key',
+        auth: 'other-auth-secret',
+      }),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 409,
+    ]);
+    const actorWon = responses[0]?.status === 201;
+    expect(
+      await prisma.pushSubscription.findFirstOrThrow({
+        where: { endpoint },
+      }),
+    ).toMatchObject(
+      actorWon
+        ? {
+            userId: actor.userId,
+            p256dh: 'actor-public-key',
+            authSecret: 'actor-auth-secret',
+          }
+        : {
+            userId: other.userId,
+            p256dh: 'other-public-key',
+            authSecret: 'other-auth-secret',
+          },
+    );
+  });
+
+  it('stops transient delivery exactly at the configured attempt ceiling', async () => {
+    const actor = await session('push-attempt-ceiling');
+    await subscribe(actor, 'https://push.example.test/attempt-ceiling').expect(
+      201,
+    );
+    const notification = await prisma.notification.create({
+      data: {
+        userId: actor.userId,
+        type: 'deadline_risk',
+        title: 'Retry only three times',
+        body: 'Bounded delivery',
+        deepLink: '/backlog',
+        dedupeKey: 'attempt-ceiling',
+        scheduledAt: clock.now(),
+        maxAttempts: 3,
+      },
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      push.respondOnce({ kind: 'transient', code: 'TEMPORARY_PUSH_FAILURE' });
+      await expect(worker.runOnce()).resolves.toBe(true);
+      const current = await prisma.notification.findUniqueOrThrow({
+        where: { id: notification.id },
+      });
+      expect(current.deliveryAttempts).toBe(attempt);
+      expect(current.deliveryStatus).toBe(attempt < 3 ? 'retry' : 'failed');
+      clock.advanceMinutes(1);
+    }
+    await expect(worker.runOnce()).resolves.toBe(false);
+    expect(push.deliveries).toHaveLength(3);
   });
 
   it('keeps notification read state user-scoped and invalidates future schedules on preference change', async () => {

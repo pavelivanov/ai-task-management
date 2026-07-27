@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { AppConfig } from '../../config/app-config.service';
 import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
 import { StructuredLogger } from '../../common/observability/structured-logger.service';
+import { runSafeBackgroundTask } from '../../common/runtime/safe-background-task';
 import { PrismaService } from '../../database/prisma.service';
 import { type Clock, CLOCK } from '../auth/clock';
 import { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
@@ -32,7 +33,13 @@ export class AssistantWorkerService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.timer = setInterval(
-      () => void this.runOnce(),
+      () =>
+        void runSafeBackgroundTask({
+          failureEvent: 'assistant.worker.loop_failed',
+          logger: this.logger,
+          onFailure: () => this.metrics.recordAssistantWorkerFailure(),
+          task: () => this.runOnce(),
+        }),
       this.config.assistantWorkerIntervalMs,
     );
     this.timer.unref();

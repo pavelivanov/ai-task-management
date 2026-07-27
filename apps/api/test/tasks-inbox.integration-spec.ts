@@ -449,6 +449,37 @@ describe('task, project, and inbox boundaries', () => {
     ).toBe(2);
   });
 
+  it('serializes parent changes so concurrent updates cannot form a cycle', async () => {
+    const user = await createSession('hierarchy-race');
+    const first = await createTask(user, 'First hierarchy node');
+    const second = await createTask(user, 'Second hierarchy node');
+
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .patch(`/tasks/${first.id}`)
+        .set('Cookie', user.cookie)
+        .set('Origin', origin)
+        .send({ parentTaskId: second.id }),
+      request(app.getHttpServer())
+        .patch(`/tasks/${second.id}`)
+        .set('Cookie', user.cookie)
+        .set('Origin', origin)
+        .send({ parentTaskId: first.id }),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 400,
+    ]);
+    expect(
+      responses.find((response) => response.status === 400)?.body,
+    ).toMatchObject({ code: 'INVALID_TASK_PARENT' });
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: [first.id, second.id] } },
+      select: { id: true, parentTaskId: true },
+    });
+    expect(tasks.filter((task) => task.parentTaskId !== null)).toHaveLength(1);
+  });
+
   it('captures inbox items oldest first and processes every supported action', async () => {
     const userA = await createSession('inbox-a');
     const userB = await createSession('inbox-b');

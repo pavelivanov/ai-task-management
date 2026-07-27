@@ -1,5 +1,6 @@
 import type { AppConfig } from '../../config/app-config.service';
 import type { PrismaService } from '../../database/prisma.service';
+import type { StructuredLogger } from '../../common/observability/structured-logger.service';
 import type { AuthService } from '../auth/auth.service';
 import type { Clock } from '../auth/clock';
 import type { InvalidationStreamService } from '../invalidations/invalidation-stream.service';
@@ -47,11 +48,15 @@ function createHarness() {
     revokedPushRetentionDays: 30,
     retentionSweepIntervalMs: 3_600_000,
   };
+  const logger = {
+    errorEvent: jest.fn(),
+  };
   const service = new DataRetentionService(
     prisma as unknown as PrismaService,
     auth as unknown as AuthService,
     config as AppConfig,
     invalidations as unknown as InvalidationStreamService,
+    logger as unknown as StructuredLogger,
     clock as Clock,
   );
   return { auth, clock, invalidations, prisma, service };

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,6 +105,150 @@ describe('authenticated application routing', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/tasks?')),
     ).toBe(false);
+  });
+
+  it('lets a user correct and remove a commitment with plan-version guards', async () => {
+    const task = {
+      id: '00000000-0000-4000-8000-000000000010',
+      title: 'Correct the pilot plan',
+      description: null,
+      category: 'work',
+      status: 'planned',
+      priority: 'normal',
+      estimateMinutes: 30,
+      dueAt: null,
+      projectId: null,
+      parentTaskId: null,
+      blockReason: null,
+      blockReasonDetails: null,
+      carryoverCount: 0,
+      version: 2,
+      createdAt: '2026-07-20T08:00:00.000Z',
+      updatedAt: '2026-07-20T08:00:00.000Z',
+      completedAt: null,
+    };
+    const item = {
+      id: '00000000-0000-4000-8000-000000000011',
+      taskId: task.id,
+      role: 'primary',
+      plannedStart: null,
+      plannedDurationMinutes: 30,
+      position: 0,
+      addedDuringDay: false,
+      completedDuringDay: false,
+      task,
+    };
+    const planBase = {
+      id: '00000000-0000-4000-8000-000000000012',
+      date: '2026-07-20',
+      workdayStart: '09:00',
+      workdayEnd: '17:00',
+      status: 'active',
+      createdAt: '2026-07-20T08:00:00.000Z',
+      updatedAt: '2026-07-20T08:00:00.000Z',
+      closedAt: null,
+      warnings: [],
+      carryoverSignals: [],
+    };
+    let currentPlan = {
+      ...planBase,
+      version: 1,
+      items: [item],
+      capacity: {
+        availableMinutes: 480,
+        scheduledMinutes: 30,
+        roleCounts: { primary: 1, secondary: 0, optional: 0 },
+      },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.endsWith('/auth/me')) return Promise.resolve(jsonResponse(user));
+      if (url.endsWith('/daily-plans/today') && method === 'GET') {
+        return Promise.resolve(jsonResponse(currentPlan));
+      }
+      if (
+        url.endsWith(`/daily-plans/today/items/${item.id}`) &&
+        method === 'PATCH'
+      ) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          expectedPlanVersion: 1,
+          role: 'secondary',
+          plannedDurationMinutes: 45,
+        });
+        currentPlan = {
+          ...currentPlan,
+          version: 2,
+          items: [
+            {
+              ...item,
+              role: 'secondary',
+              plannedDurationMinutes: 45,
+            },
+          ],
+          capacity: {
+            availableMinutes: 480,
+            scheduledMinutes: 45,
+            roleCounts: { primary: 0, secondary: 1, optional: 0 },
+          },
+        };
+        return Promise.resolve(jsonResponse(currentPlan));
+      }
+      if (
+        url.includes(`/daily-plans/today/items/${item.id}?`) &&
+        method === 'DELETE'
+      ) {
+        expect(url).toContain('expectedPlanVersion=2');
+        currentPlan = {
+          ...currentPlan,
+          version: 3,
+          items: [],
+          capacity: {
+            availableMinutes: 480,
+            scheduledMinutes: 0,
+            roleCounts: { primary: 0, secondary: 0, optional: 0 },
+          },
+        };
+        return Promise.resolve(jsonResponse(currentPlan));
+      }
+      throw new Error(`Unexpected request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/today');
+    const browser = userEvent.setup();
+    let editor = await screen.findByRole('form', {
+      name: 'Edit Correct the pilot plan commitment',
+    });
+    await browser.selectOptions(within(editor).getByLabelText('Role'), [
+      'secondary',
+    ]);
+    const minutes = within(editor).getByLabelText('Minutes');
+    await browser.clear(minutes);
+    await browser.type(minutes, '45');
+    await browser.click(within(editor).getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Commitment updated.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith(`/daily-plans/today/items/${item.id}`) &&
+            init?.method === 'PATCH',
+        ),
+      ).toBe(true),
+    );
+
+    editor = await screen.findByRole('form', {
+      name: 'Edit Correct the pilot plan commitment',
+    });
+    await browser.click(within(editor).getByRole('button', { name: 'Remove' }));
+    expect(
+      await screen.findByText('Commitment returned to the backlog.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Correct the pilot plan'),
+    ).not.toBeInTheDocument();
   });
 
   it('renders deterministic review facts and hides absent assistant content', async () => {

@@ -17,13 +17,20 @@ go/no-go record.
    tests, and builds the repository.
 2. Select the `execution-assistant-images-<commit-sha>` artifact produced by
    that workflow. Do not retag a mutable branch or `latest` image as the release
-   source.
+   source. The workflow copies the API and web digests from the previous
+   successful `main` release record into the candidate artifact; it never
+   rebuilds rollback images. It fails closed when no unexpired prior record is
+   available.
 3. Confirm the web artifact was built with the intended
    `RELEASE_WEB_API_BASE_URL`. The workflow deliberately uses
    `https://api.invalid` when the repository variable is absent so an
    unconfigured image fails closed. Rebuild the same commit with the correct
    public API URL before promotion if necessary.
 4. Record the three image digests and the commit SHA in the release ticket.
+   Compare the artifact's rollback commit and digests with the release currently
+   deployed in the target environment. Stop if they differ and record the
+   actually deployed immutable API and web digests as the rollback source before
+   migration or promotion.
 
 ## Database gate
 

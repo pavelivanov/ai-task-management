@@ -51,6 +51,8 @@ export const startFocusSessionSchema = z
   })
   .strict();
 
+export const switchWaitingFocusSessionSchema = startFocusSessionSchema;
+
 export const focusReasonSchema = z
   .object({ reason: focusTextSchema.optional() })
   .strict();
@@ -106,6 +108,9 @@ export type FocusSessionSegment = z.infer<typeof focusSessionSegmentSchema>;
 export type FocusSession = z.infer<typeof focusSessionSchema>;
 export type CurrentFocusSession = z.infer<typeof currentFocusSessionSchema>;
 export type StartFocusSession = z.output<typeof startFocusSessionSchema>;
+export type SwitchWaitingFocusSession = z.output<
+  typeof switchWaitingFocusSessionSchema
+>;
 export type FocusReason = z.output<typeof focusReasonSchema>;
 export type WaitForFocusSession = z.output<typeof waitForFocusSessionSchema>;
 export type ScheduleAfterProtectedHours = z.output<

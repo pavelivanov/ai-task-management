@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { AppConfig } from '../../config/app-config.service';
 import { OperationalMetrics } from '../../common/observability/operational-metrics.service';
 import { StructuredLogger } from '../../common/observability/structured-logger.service';
+import { runSafeBackgroundTask } from '../../common/runtime/safe-background-task';
 import { PrismaService } from '../../database/prisma.service';
 import { type Clock, CLOCK } from '../auth/clock';
 import { NotificationsService } from './notifications.service';
@@ -38,7 +39,13 @@ export class NotificationWorkerService
 
   onModuleInit(): void {
     this.timer = setInterval(
-      () => void this.runOnce(),
+      () =>
+        void runSafeBackgroundTask({
+          failureEvent: 'notification.worker.loop_failed',
+          logger: this.logger,
+          onFailure: () => this.metrics.recordPushOutcome('failed'),
+          task: () => this.runOnce(),
+        }),
       this.config.notificationWorkerIntervalMs,
     );
     this.timer.unref();
@@ -133,7 +140,7 @@ export class NotificationWorkerService
           ): result is Extract<PushDeliveryResult, { kind: 'transient' }> =>
             result.kind === 'transient',
         );
-      if (transient && claimed.deliveryAttempts < claimed.maxAttempts) {
+      if (transient && claimed.deliveryAttempts + 1 < claimed.maxAttempts) {
         const attempts = claimed.deliveryAttempts + 1;
         await this.prisma.notification.update({
           where: { id: claimed.id },
